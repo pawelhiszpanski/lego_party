@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>🎮 Party Game</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box; margin: 0; padding: 0;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none; -webkit-user-select: none;
+    }
+    body {
+      background: #12121e; color: #fff;
+      font-family: Arial, sans-serif;
+      min-height: 100dvh;
+      display: flex; flex-direction: column;
+      align-items: center; overflow: hidden;
+    }
+
+    .screen {
+      display: none; flex-direction: column;
+      align-items: center; width: 100%; max-width: 440px;
+      min-height: 100dvh; padding: 22px 16px 10px; gap: 12px;
+    }
+    .screen.active { display: flex; }
+
+    .logo  { font-size: 3rem; }
+    .title { font-size: 2rem; font-weight: 900; color: #ffd700;
+             text-shadow: 0 0 24px rgba(255,215,0,.55); letter-spacing: 2px; }
+    .sub   { color: #70709a; font-size: .95rem; text-align: center; }
+    input[type=text] {
+      background: #1c1c30; border: 2.5px solid #e04060;
+      color: #fff; padding: 14px 20px; border-radius: 14px;
+      font-size: 1.25rem; width: 100%; max-width: 320px;
+      text-align: center; outline: none;
+    }
+
+    .btn {
+      border: none; border-radius: 14px;
+      font-size: 1.2rem; font-weight: 800; cursor: pointer;
+      padding: 16px 0; width: 100%; max-width: 320px;
+      letter-spacing: 1px; color: #fff;
+      transition: transform .07s, opacity .1s;
+    }
+    .btn:active { transform: scale(.93); opacity: .85; }
+    .btn-join  { background: linear-gradient(135deg,#e04060,#b02040); }
+    .btn-start {
+      background: linear-gradient(135deg,#3ccf70,#1a9040);
+      font-size: 1.4rem; padding: 22px 0;
+    }
+    .btn-start:disabled {
+      background: #2a2a42; color: #404055; cursor: default;
+    }
+
+    #status { font-size: .88rem; text-align: center; }
+    .ok  { color: #4cde70; } .err { color: #e04060; } .dim { color: #50506a; }
+
+    .player-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: #1c1c30; border-radius: 14px;
+      padding: 10px 16px; width: 100%;
+    }
+    .dot   { width: 20px; height: 20px; border-radius: 50%;
+             border: 2px solid rgba(255,255,255,.5); flex-shrink: 0; }
+    .pname { font-size: 1.05rem; font-weight: 700; flex: 1; }
+    .pscore{ font-size: 1.5rem; font-weight: 900; color: #ffd700; }
+
+    .banner {
+      width: 100%; text-align: center; padding: 10px;
+      border-radius: 12px; font-size: 1rem; font-weight: 700;
+      background: #1c1c30; letter-spacing: 1px;
+    }
+    .bn-lobby  { color: #ffd700; }
+    .bn-vote   { color: #f0a020; background: rgba(240,160,30,.12); }
+    .bn-coins  { color: #4cde70; background: rgba(76,222,112,.1); }
+    .bn-pong   { color: #b040de; background: rgba(176,64,222,.12); }
+    .bn-ended  { color: #e04060; background: rgba(224,64,96,.1); }
+
+    #lobby-info { color: #70709a; font-size: .95rem; text-align: center; }
+
+    .vote-title { font-size: 1.1rem; font-weight: 700; color: #ffd700; }
+    .vote-timer {
+      font-size: 3rem; font-weight: 900; color: #fff; line-height: 1;
+    }
+    .vote-timer.urgent { color: #e04060; animation: blink .5s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .vote-grid {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 10px; width: 100%;
+    }
+    .vote-btn {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 5px;
+      border: none; border-radius: 16px;
+      padding: 18px 6px; cursor: pointer; font-weight: 800;
+      transition: transform .07s; aspect-ratio: .85;
+    }
+    .vote-btn:active { transform: scale(.88); }
+    .vote-btn.selected { outline: 4px solid #fff; transform: scale(.95); }
+    .vletter { font-size: 1.9rem; color: #fff; }
+    .vname   { font-size: .78rem; color: rgba(255,255,255,.85); }
+    .vcnt    { font-size: 1.2rem; font-weight: 900; color: #fff; }
+    .va { background: linear-gradient(135deg,#1a7aaa,#0f4a80); }
+    .vb { background: linear-gradient(135deg,#8a1ab0,#540d80); }
+    .vc { background: linear-gradient(135deg,#b07010,#804010); }
+    .voted-lbl { color: #4cde70; font-size: 1rem; font-weight: 700; }
+
+    #panel-joystick {
+      flex: 1; display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      width: 100%; gap: 10px;
+    }
+    .joy-label {
+      color: #50506a; font-size: .85rem; letter-spacing: 1px;
+    }
+    #joy-outer {
+      width: min(80vw, 300px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: #1a1a2e;
+      border: 3px solid #2a2a48;
+      position: relative;
+      touch-action: none;
+      box-shadow: 0 0 40px rgba(76,222,112,.08),
+                  inset 0 0 30px rgba(0,0,0,.5);
+    }
+
+    #joy-outer::before,
+    #joy-outer::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,.05);
+      border-radius: 50%;
+    }
+    #joy-outer::before { width: 66%; height: 66%; }
+    #joy-outer::after  { width: 33%; height: 33%; }
+
+    #joy-knob {
+      position: absolute;
+      width: 38%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #7adf9a, #2a9a50);
+      border: 3px solid rgba(255,255,255,.35);
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      transition: none;
+      pointer-events: none;
+    }
+    #joy-knob.idle {
+      transition: top .15s ease, left .15s ease;
+    }
+    .joy-dir-indicator {
+      width: 60px; height: 60px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; font-weight: 900; color: #2a9a50;
+      min-height: 60px;
+    }
+
+    #panel-dpad {
+      flex: 1; display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      width: 100%; gap: 16px;
+    }
+    .pong-hint {
+      color: #70709a; font-size: .9rem; text-align: center;
+      line-height: 1.5;
+    }
+    .dpad-pong {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 12px;
+      width: min(88vw, 320px);
+    }
+    .dpad-row { display: flex; gap: 12px; width: 100%; }
+    .db {
+      flex: 1; background: #1c1c30;
+      border: 3px solid #2c2c48; border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.4rem; cursor: pointer;
+      padding: 28px 0;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4);
+      transition: background .07s, transform .05s, border-color .07s;
+    }
+    .db:active, .db.pressed {
+      background: #b040de; border-color: #d060ff;
+      transform: scale(.90);
+    }
+    .pong-score-bar {
+      display: flex; justify-content: space-around;
+      width: 100%; padding: 10px;
+      background: #1c1c30; border-radius: 14px;
+    }
+    .team-score {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 4px;
+    }
+    .team-score .ts-label { font-size: .75rem; color: #70709a; }
+    .team-score .ts-num   { font-size: 2rem; font-weight: 900; }
+
+    .bottom {
+      width: 100%; text-align: center;
+      font-size: .78rem; color: #30304a; padding-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="screen-join" class="screen active">
+  <div class="logo">🎮</div>
+  <div class="title">PARTY GAME</div>
+  <div class="sub">Wpisz imię i dołącz jako kontroler</div>
+  <input type="text" id="player-name" placeholder="Twoje imię…"
+         maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false">
+  <button class="btn btn-join" onclick="joinGame()">DOŁĄCZ DO GRY</button>
+  <div id="status" class="dim">Łączenie z serwerem…</div>
+</div>
+
+<div id="screen-game" class="screen">
+
+  <div class="player-bar">
+    <div class="dot" id="color-dot"></div>
+    <span class="pname" id="disp-name">Gracz</span>
+    <span style="font-size:1rem">🪙</span>
+    <span class="pscore" id="disp-score">0</span>
+  </div>
+
+  <div class="banner bn-lobby" id="phase-banner">⏳ Lobby…</div>
+
+  <div id="panel-lobby"
+       style="width:100%;display:flex;flex-direction:column;align-items:center;gap:14px;">
+    <div id="lobby-info" class="dim">Oczekiwanie na graczy…</div>
+    <button class="btn btn-start" id="btn-start"
+            onclick="sendStart()" disabled>START GAME</button>
+  </div>
+
+  <div id="panel-vote"
+       style="width:100%;display:none;flex-direction:column;align-items:center;gap:12px;">
+    <div class="vote-title">Głosuj na grę!</div>
+    <div class="vote-timer" id="vote-timer">10s</div>
+    <div class="vote-grid">
+      <button class="vote-btn va" onclick="vote('A')">
+        <span class="vletter">A</span>
+        <span class="vname">Monety 🪙</span>
+        <span class="vcnt" id="vcnt-a">0</span>
+      </button>
+      <button class="vote-btn vb" onclick="vote('B')">
+        <span class="vletter">B</span>
+        <span class="vname">Pong 🏓</span>
+        <span class="vcnt" id="vcnt-b">0</span>
+      </button>
+      <button class="vote-btn vc" onclick="vote('C')">
+        <span class="vletter">C</span>
+        <span class="vname">Losowo 🎲</span>
+        <span class="vcnt" id="vcnt-c">0</span>
+      </button>
+    </div>
+    <div class="voted-lbl" id="voted-label" style="display:none">✓ Zagłosowano!</div>
+  </div>
+
+  <div id="panel-joystick">
+    <div class="joy-label">JOYSTICK</div>
+    <div id="joy-outer">
+      <div id="joy-knob" class="idle"></div>
+    </div>
+    <div class="joy-dir-indicator" id="joy-dir">●</div>
+  </div>
+
+  <div id="panel-dpad">
+    <div class="pong-score-bar" id="pong-score-bar">
+      <div class="team-score">
+        <span class="ts-label" style="color:#3c6edc">TWOJA DRUŻYNA</span>
+        <span class="ts-num" id="pong-my-score" style="color:#3c6edc">0</span>
+      </div>
+      <div style="color:#404060;font-size:1.5rem;align-self:center">VS</div>
+      <div class="team-score">
+        <span class="ts-label" style="color:#dc3c3c">PRZECIWNIK</span>
+        <span class="ts-num" id="pong-op-score" style="color:#dc3c3c">0</span>
+      </div>
+    </div>
+    <div class="pong-hint">
+      Przesuwaj paletkę<br><strong>GÓRA / DÓŁ</strong>
+    </div>
+    <div class="dpad-pong">
+      <div class="dpad-row">
+        <div class="db" id="btn-U"
+             ontouchstart="press('U',event)" ontouchend="release('U',event)"
+             onmousedown="press('U',event)"  onmouseup="release('U',event)"
+             onmouseleave="release('U',event)">▲</div>
+      </div>
+      <div class="dpad-row">
+        <div class="db" id="btn-D"
+             ontouchstart="press('D',event)" ontouchend="release('D',event)"
+             onmousedown="press('D',event)"  onmouseup="release('D',event)"
+             onmouseleave="release('D',event)">▼</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom" id="game-bottom"></div>
+</div>
+
+<script>
+
+let ws = null, wsOk = false;
+let myId = -1, myName = '', myTeam = -1;
+let myVote = null;
+let intervals = {};
+const REPEAT = 80;
+
+const COLOR_CSS = {red:'#dc3c3c',blue:'#3c6edc',green:'#3cc850',yellow:'#f0c828'};
+const PHASE = {LOBBY:0,VOTING:1,COINS:2,PONG:3,ENDED:4};
+const BN_CLS = ['bn-lobby','bn-vote','bn-coins','bn-pong','bn-ended'];
+const BN_TXT = ['⏳ Lobby…','🗳 Głosowanie!','🪙 Zbieranie Monet','🏓 PONG!','🏆 Koniec!'];
+
+function connectWS() {
+  const host = window.location.hostname;
+  const port = window.location.port || '8080';
+  ws = new WebSocket(`ws://${host}:${port}/ws`);
+  ws.onopen    = () => { wsOk = true;  setStatus('Połączono ✓','ok'); };
+  ws.onclose   = () => { wsOk = false; setStatus('Rozłączono…','err'); setTimeout(connectWS,2000); };
+  ws.onerror   = ()  => setStatus('Błąd WebSocket','err');
+  ws.onmessage = ev  => handleMsg(ev.data.trim());
+}
+function handleMsg(msg) {
+  if (msg.startsWith('WELCOME:')) {
+    myId = parseInt(msg.slice(8)); showGame();
+  } else if (msg.startsWith('STATE:')) {
+    try { updateUI(JSON.parse(msg.slice(6))); } catch(_){}
+  } else if (msg.startsWith('ERROR:')) {
+    setStatus('⚠️ '+msg.slice(6),'err');
+  }
+}
+
+function joinGame() {
+  const n = document.getElementById('player-name').value.trim();
+  if (!n)    { setStatus('Podaj imię!','err'); return; }
+  if (!wsOk) { setStatus('Brak połączenia','err'); return; }
+  myName = n; send(`JOIN:${n}`);
+}
+function showGame() {
+  document.getElementById('screen-join').classList.remove('active');
+  document.getElementById('screen-game').classList.add('active');
+  document.getElementById('disp-name').textContent = myName;
+  startPing();
+}
+
+function sendStart() { send('START'); }
+function vote(opt) {
+  if (myVote) return;
+  myVote = opt; send(`VOTE:${opt}`);
+  document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
+  const cls = {A:'va',B:'vb',C:'vc'}[opt];
+  document.querySelector(`.vote-btn.${cls}`)?.classList.add('selected');
+  document.getElementById('voted-label').style.display = 'block';
+}
+
+function press(dir, ev) {
+  if (ev) ev.preventDefault();
+  if (intervals[dir]) return;
+  sendAction(dir);
+  document.getElementById('btn-'+dir)?.classList.add('pressed');
+  intervals[dir] = setInterval(() => sendAction(dir), REPEAT);
+}
+function release(dir, ev) {
+  if (ev) ev.preventDefault();
+  clearInterval(intervals[dir]); delete intervals[dir];
+  document.getElementById('btn-'+dir)?.classList.remove('pressed');
+}
+function sendAction(dir) { send(`ACTION:${dir}`); }
+
+(function setupJoystick() {
+  const outer   = document.getElementById('joy-outer');
+  const knob    = document.getElementById('joy-knob');
+  const dirEl   = document.getElementById('joy-dir');
+
+  let active    = false;
+  let joyTimer  = null;
+  let curDirX   = 0, curDirY = 0; // -1..1
+
+  const DEAD    = 0.18;
+  const MAX_R   = 0.42;
+  const DIR_ARROWS = { '':' ● ','U':'▲','D':'▼','L':'◀','R':'▶',
+                        'RU':'↗','RD':'↘','LU':'↖','LD':'↙' };
+
+  function getPos(ev) {
+    const t   = ev.touches ? ev.touches[0] : ev;
+    const r   = outer.getBoundingClientRect();
+    const cx  = r.left + r.width  / 2;
+    const cy  = r.top  + r.height / 2;
+    let dx  = t.clientX - cx;
+    let dy  = t.clientY - cy;
+    const rad = r.width / 2;
+    const dist = Math.hypot(dx, dy);
+    if (dist > rad) { dx *= rad/dist; dy *= rad/dist; }
+    return { dx, dy, rad };
+  }
+
+  function applyPos(dx, dy, rad) {
+    const maxPx = rad * MAX_R * 2;
+    const pct   = rad > 0 ? Math.min(Math.hypot(dx,dy) / rad, 1.0) : 0;
+    const kx    = (dx / rad) * maxPx;
+    const ky    = (dy / rad) * maxPx;
+    knob.classList.remove('idle');
+    knob.style.left = `calc(50% + ${kx}px)`;
+    knob.style.top  = `calc(50% + ${ky}px)`;
+
+    const ndx = rad > 0 ? dx / rad : 0;
+    const ndy = rad > 0 ? dy / rad : 0;
+    curDirX = Math.abs(ndx) > DEAD ? ndx : 0;
+    curDirY = Math.abs(ndy) > DEAD ? ndy : 0;
+
+    let arrow = '';
+    if (curDirY < -DEAD) arrow += 'U';
+    if (curDirY >  DEAD) arrow += 'D';
+    if (curDirX < -DEAD) arrow = (arrow + 'L').split('').sort().join('');
+    if (curDirX >  DEAD) arrow = (arrow + 'R');
+    dirEl.textContent = DIR_ARROWS[arrow] ?? '●';
+  }
+
+  function resetKnob() {
+    knob.classList.add('idle');
+    knob.style.left = '50%';
+    knob.style.top  = '50%';
+    curDirX = curDirY = 0;
+    dirEl.textContent = '●';
+  }
+
+  function startJoy(ev) {
+    ev.preventDefault();
+    active = true;
+    const { dx, dy, rad } = getPos(ev);
+    applyPos(dx, dy, rad);
+
+    clearInterval(joyTimer);
+    joyTimer = setInterval(() => {
+      if (!active) return;
+      let dirStr = '';
+      const TX = 0.25, TY = 0.25;
+      if (curDirY < -TY) dirStr += 'U';
+      if (curDirY >  TY) dirStr += 'D';
+      if (curDirX < -TX) dirStr += 'L';
+      if (curDirX >  TX) dirStr += 'R';
+      if (dirStr) send(`ACTION:${dirStr}`);
+    }, 50);
+  }
+
+  function moveJoy(ev) {
+    if (!active) return;
+    ev.preventDefault();
+    const { dx, dy, rad } = getPos(ev);
+    applyPos(dx, dy, rad);
+  }
+
+  function endJoy(ev) {
+    if (ev) ev.preventDefault();
+    active = false;
+    clearInterval(joyTimer);
+    resetKnob();
+  }
+
+  outer.addEventListener('touchstart',  startJoy, { passive: false });
+  outer.addEventListener('touchmove',   moveJoy,  { passive: false });
+  outer.addEventListener('touchend',    endJoy,   { passive: false });
+  outer.addEventListener('touchcancel', endJoy,   { passive: false });
+  outer.addEventListener('mousedown',   startJoy);
+  document.addEventListener('mousemove', ev => { if (active) moveJoy(ev); });
+  document.addEventListener('mouseup',   ev => { if (active) endJoy(ev); });
+})();
+
+function updateUI(state) {
+  const phase   = state.phase ?? 0;
+  const players = state.players ?? [];
+  const votes   = state.votes   ?? [-1,-1,-1,-1];
+  const pg      = state.pong    ?? {};
+
+  const banner = document.getElementById('phase-banner');
+  banner.className   = 'banner ' + BN_CLS[phase];
+  banner.textContent = BN_TXT[phase];
+
+  const me = players.find(p => p.id === myId);
+  if (me) {
+    document.getElementById('disp-score').textContent = me.score;
+    document.getElementById('color-dot').style.background =
+      COLOR_CSS[me.color] ?? '#888';
+    myTeam = me.team ?? -1;
+  }
+
+  showPanel(phase);
+
+  if (phase === PHASE.LOBBY) {
+    const cnt = players.length;
+    document.getElementById('lobby-info').textContent =
+      cnt >= 2 ? `Graczy gotowych: ${cnt}/4 – możesz startować!`
+               : `Graczy: ${cnt}/4 – potrzeba min. 2…`;
+    document.getElementById('btn-start').disabled = cnt < 2;
+    myVote = null;
+    document.getElementById('voted-label').style.display = 'none';
+    document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
+  }
+
+  if (phase === PHASE.VOTING) {
+    const vl = state.vote_left ?? 10;
+    const tel = document.getElementById('vote-timer');
+    tel.textContent = `${vl}s`;
+    tel.className   = 'vote-timer' + (vl <= 3 ? ' urgent' : '');
+    document.getElementById('vcnt-a').textContent = state.va ?? 0;
+    document.getElementById('vcnt-b').textContent = state.vb ?? 0;
+    document.getElementById('vcnt-c').textContent = state.vc ?? 0;
+  }
+
+  if (phase === PHASE.PONG) {
+    const myScore = myTeam === 0 ? pg.s0 : pg.s1;
+    const opScore = myTeam === 0 ? pg.s1 : pg.s0;
+    document.getElementById('pong-my-score').textContent = myScore ?? 0;
+    document.getElementById('pong-op-score').textContent = opScore ?? 0;
+  }
+
+  const bot = document.getElementById('game-bottom');
+  if (phase === PHASE.COINS)
+    bot.textContent = `Pozostało: ${state.time_left}s`;
+  else if (phase === PHASE.PONG)
+    bot.textContent = `Drużyna 0: ${pg.s0 ?? 0}  –  Drużyna 1: ${pg.s1 ?? 0}  (do 3)`;
+  else if (phase === PHASE.ENDED) {
+    const sorted = [...players].sort((a,b) => b.score-a.score);
+    const w = sorted[0];
+    bot.textContent = w ? `🏆 ${w.name} wygrywa!` : '';
+  } else bot.textContent = '';
+}
+
+function showPanel(phase) {
+  const pLobby = document.getElementById('panel-lobby');
+  const pVote  = document.getElementById('panel-vote');
+  const pJoy   = document.getElementById('panel-joystick');
+  const pDpad  = document.getElementById('panel-dpad');
+
+  pLobby.style.display = 'none';
+  pVote.style.display  = 'none';
+  pJoy.style.display   = 'none';
+  pDpad.style.display  = 'none';
+
+  if      (phase === PHASE.LOBBY)  pLobby.style.display = 'flex';
+  else if (phase === PHASE.VOTING) pVote.style.display  = 'flex';
+  else if (phase === PHASE.COINS)  pJoy.style.display   = 'flex';
+  else if (phase === PHASE.PONG)   pDpad.style.display  = 'flex';
+  else if (phase === PHASE.ENDED)  pLobby.style.display = 'flex';
+}
+
+let pingTimer;
+function startPing() {
+  clearInterval(pingTimer);
+  pingTimer = setInterval(() => send('PING'), 3000);
+}
+
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
+}
+function setStatus(txt, type) {
+  const el = document.getElementById('status');
+  el.textContent = txt; el.className = type;
+}
+
+const KMAP = { ArrowUp:'U', ArrowDown:'D', ArrowLeft:'L', ArrowRight:'R' };
+document.addEventListener('keydown', e => {
+  const d = KMAP[e.key];
+  if (d) { e.preventDefault(); press(d); }
+});
+document.addEventListener('keyup', e => {
+  const d = KMAP[e.key]; if (d) release(d);
+});
+document.getElementById('player-name')
+  .addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
+
+document.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
+
+connectWS();
+</script>
+</body>
+</html>
