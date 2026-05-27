@@ -21,12 +21,12 @@ Telefon N  ──┘                       HTTP /   │       game_display.py
 
 ### Komponenty Systemu
 
-| Komponent | Język | Rola w architekturze |
-| :--- | :--- | :--- |
-| **`server.c`** | C | Autorytarny serwer gry. Zarządza maszyną stanów, współbieżną obsługą klientów, fizyką i synchronizacją. |
-| **`bridge.py`** | Python | Serwer HTTP oraz asynchroniczny translator protokołów (Full-Duplex Relay: WebSockets ↔ TCP). |
-| **`game_display.py`** | Python | Klient renderujący. Pobiera stan gry i wyświetla główną planszę (Pygame, ~60 FPS). |
-| **`static/controller.html`** | HTML/JS | Lekki interfejs kontrolera uruchamiany w przeglądarce mobilnej (Web-based D-pad). |
+|            Komponent          |   Język  |                                     Rola w architekturze                                                 |
+| ----------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| **`server.c`**                | C        | Autorytarny serwer gry. Zarządza maszyną stanów, współbieżną obsługą klientów, fizyką i synchronizacją.  |
+| **`bridge.py`**               | Python   | Serwer HTTP oraz asynchroniczny translator protokołów (Full-Duplex Relay: WebSockets ↔ TCP).             |
+| **`game_display.py`**         | Python   | Klient renderujący. Pobiera stan gry i wyświetla główną planszę (Pygame, ~60 FPS).                       |
+| **`static/controller.html`**  | HTML/JS  | Lekki interfejs kontrolera uruchamiany w przeglądarce mobilnej (Web-based D-pad).                        |
 
 ---
 
