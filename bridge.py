@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """
-bridge.py – Most między telefonami a serwerem gry.
-
 Telefon (przeglądarka)
     └── WebSocket ws://<IP>:8080/ws
          └── bridge.py
               └── TCP 127.0.0.1:5000
                    └── server (C)
-
-Uruchomienie:
-    pip install flask flask-sock
-    python3 bridge.py
 """
 
 import threading

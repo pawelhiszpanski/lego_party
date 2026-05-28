@@ -20,28 +20,32 @@
 #define PLAYER_RADIUS      20
 #define GAME_DURATION      30
 #define HEARTBEAT_TIMEOUT  8
-#define TICK_US            16667   /* ~60 tps */
+#define TICK_US            16667
 #define VOTE_DURATION      10
-#define END_TICKS          480     /* ~8s przy 60tps */
-#define PONG_WIN_SCORE     3       /* do 3 punktów */
+#define END_TICKS          480
+#define PONG_WIN_SCORE     3
 
-/* Pong */
 #define PONG_W             800
 #define PONG_H             600
 #define PONG_PAD_W         14
 #define PONG_PAD_H         88
 #define PONG_BALL_R        10
-#define PONG_PAD_SPEED     24     /* szybsze paletki */
-#define PONG_BALL_INIT     9.0f   /* szybsza piłka startowa */
-#define PONG_BALL_MAX      28.0f  /* limit prędkości */
-#define PONG_ACCEL         1.055f /* przyspieszenie per odbicie od paletki */
+#define PONG_PAD_SPEED     28
+#define PONG_BALL_INIT     6.5f
+#define PONG_BALL_MAX      28.0f
+#define PONG_ACCEL         1.055f
+
+#define BOMB_DURATION      45
+#define BOMB_PASS_RADIUS   60
+#define BOMB_MIN_HOLD      90   /* ticks before bomb can be passed again */
 
 typedef enum {
     PHASE_LOBBY  = 0,
     PHASE_VOTING = 1,
     PHASE_COINS  = 2,
     PHASE_PONG   = 3,
-    PHASE_ENDED  = 4
+    PHASE_ENDED  = 4,
+    PHASE_BOMB   = 5
 } GamePhase;
 
 typedef struct {
@@ -66,10 +70,18 @@ typedef struct {
     float speed;
 } PongState;
 
+typedef struct {
+    int holder;       /* player id holding the bomb, -1 = none */
+    int time_left;    /* seconds remaining */
+    int hold_ticks;   /* ticks current holder has held it */
+    int exploded;     /* 1 when bomb went off */
+} BombState;
+
 static Client    clients[MAX_CLIENTS];
 static Player    players[MAX_PLAYERS];
 static Coin      coins[MAX_COINS];
 static PongState pong;
+static BombState bomb;
 static GamePhase phase      = PHASE_LOBBY;
 static int       time_left  = GAME_DURATION;
 static int       vote_left  = VOTE_DURATION;
@@ -97,22 +109,23 @@ static void broadcast(const char *msg, int len) {
 }
 
 static void build_json(char *buf, int sz) {
-    int p = 0, va = 0, vb = 0, vc = 0;
+    int p = 0, va = 0, vb = 0, vc = 0, vd = 0;
     int votes_arr[MAX_PLAYERS];
     for (int i = 0; i < MAX_PLAYERS; i++) {
         votes_arr[i] = players[i].active ? players[i].vote : -1;
         if (players[i].active) {
-            if (players[i].vote == 0) va++;
+            if      (players[i].vote == 0) va++;
             else if (players[i].vote == 1) vb++;
             else if (players[i].vote == 2) vc++;
+            else if (players[i].vote == 3) vd++;
         }
     }
     p += snprintf(buf+p, sz-p,
         "{\"phase\":%d,\"time_left\":%d,\"vote_left\":%d,"
-        "\"last_game\":%d,\"va\":%d,\"vb\":%d,\"vc\":%d,"
+        "\"last_game\":%d,\"va\":%d,\"vb\":%d,\"vc\":%d,\"vd\":%d,"
         "\"votes\":[%d,%d,%d,%d],\"players\":[",
         phase, time_left, vote_left, last_game,
-        va, vb, vc,
+        va, vb, vc, vd,
         votes_arr[0], votes_arr[1], votes_arr[2], votes_arr[3]);
 
     int first = 1;
@@ -139,9 +152,11 @@ static void build_json(char *buf, int sz) {
     p += snprintf(buf+p, sz-p,
         "],\"pong\":{\"bx\":%.1f,\"by\":%.1f,"
         "\"py0\":%.1f,\"py1\":%.1f,"
-        "\"s0\":%d,\"s1\":%d,\"win\":%d,\"spd\":%.1f}}",
+        "\"s0\":%d,\"s1\":%d,\"win\":%d,\"spd\":%.1f},"
+        "\"bomb\":{\"holder\":%d,\"time_left\":%d,\"exploded\":%d}}",
         pong.bx, pong.by, pong.py0, pong.py1,
-        pong.score0, pong.score1, pong.winner, pong.speed);
+        pong.score0, pong.score1, pong.winner, pong.speed,
+        bomb.holder, bomb.time_left, bomb.exploded);
 }
 
 static void pong_reset_ball(int dir) {
@@ -226,35 +241,95 @@ static void pong_tick(void) {
     }
 }
 
+static void bomb_init(void) {
+    bomb.exploded  = 0;
+    bomb.time_left = BOMB_DURATION;
+    bomb.hold_ticks = 0;
+    /* pick random starting holder */
+    int cnt = 0, ids[MAX_PLAYERS];
+    for (int i = 0; i < MAX_PLAYERS; i++)
+        if (players[i].active) ids[cnt++] = i;
+    bomb.holder = cnt > 0 ? ids[rand() % cnt] : 0;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+        if (players[i].active) {
+            players[i].x = START_X[i];
+            players[i].y = START_Y[i];
+            players[i].score = 0;
+        }
+    fprintf(stderr, "[BOMB] Start, holder=%d\n", bomb.holder);
+}
+
+static void bomb_tick(void) {
+    if (bomb.exploded) return;
+    bomb.hold_ticks++;
+
+    /* try to pass: check proximity to other players */
+    if (bomb.holder >= 0 && bomb.hold_ticks >= BOMB_MIN_HOLD) {
+        float hx = players[bomb.holder].x;
+        float hy = players[bomb.holder].y;
+        float best_dist = 1e9f;
+        int   best_pid  = -1;
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (i == bomb.holder || !players[i].active) continue;
+            float dx = players[i].x - hx;
+            float dy = players[i].y - hy;
+            float d  = sqrtf(dx*dx + dy*dy);
+            if (d < BOMB_PASS_RADIUS && d < best_dist) {
+                best_dist = d;
+                best_pid  = i;
+            }
+        }
+        if (best_pid >= 0) {
+            fprintf(stderr, "[BOMB] Pass %d -> %d\n", bomb.holder, best_pid);
+            bomb.holder     = best_pid;
+            bomb.hold_ticks = 0;
+        }
+    }
+}
+
 static void resolve_vote(void) {
-    int va = 0, vb = 0, vc = 0;
+    int va = 0, vb = 0, vc = 0, vd = 0;
     for (int i = 0; i < MAX_PLAYERS; i++) {
         if (!players[i].active) continue;
-        if (players[i].vote == 0) va++;
+        if      (players[i].vote == 0) va++;
         else if (players[i].vote == 1) vb++;
         else if (players[i].vote == 2) vc++;
+        else if (players[i].vote == 3) vd++;
     }
-    int chosen;
-    if (vc > va && vc > vb) chosen = rand() % 2;
-    else if (va > vb)       chosen = 0;
-    else if (vb > va)       chosen = 1;
-    else                    chosen = rand() % 2;
 
-    last_game = chosen;
-    fprintf(stderr, "[VOTE] A=%d B=%d C=%d → %s\n",
-            va, vb, vc, chosen ? "PONG" : "COINS");
+    /* pick highest; ties broken randomly */
+    int max_v = va;
+    if (vb > max_v) max_v = vb;
+    if (vc > max_v) max_v = vc;
+    if (vd > max_v) max_v = vd;
+
+    int winners[4], nw = 0;
+    if (va == max_v) winners[nw++] = 0;
+    if (vb == max_v) winners[nw++] = 1;
+    if (vc == max_v) winners[nw++] = 2;
+    if (vd == max_v) winners[nw++] = 3;
+
+    int chosen_mode = winners[rand() % nw];
+    if (chosen_mode == 3) chosen_mode = rand() % 3; /* D = random game */
+
+    last_game = chosen_mode;
+    fprintf(stderr, "[VOTE] A=%d B=%d C=%d D=%d -> game %d\n",
+            va, vb, vc, vd, chosen_mode);
 
     g_last_second = time(NULL);
 
-    if (chosen == 0) {
+    if (chosen_mode == 0) {
         phase     = PHASE_COINS;
         time_left = GAME_DURATION;
         for (int i = 0; i < MAX_PLAYERS; i++) players[i].score = 0;
         for (int i = 0; i < MAX_COINS;   i++) spawn_coin(i);
-    } else {
+    } else if (chosen_mode == 1) {
         phase = PHASE_PONG;
         for (int i = 0; i < MAX_PLAYERS; i++) players[i].score = 0;
         pong_init();
+    } else {
+        phase = PHASE_BOMB;
+        bomb_init();
     }
 }
 
@@ -309,7 +384,29 @@ static void *game_loop(void *arg) {
             pong_tick();
             if (pong.winner >= 0) {
                 phase = PHASE_ENDED; end_ticks = 0;
-                fprintf(stderr, "[PONG] Wygrywa druzyna %d!\n", pong.winner);
+                fprintf(stderr, "[PONG] Team %d wins!\n", pong.winner);
+            }
+            for (int i = 0; i < MAX_PLAYERS; i++)
+                if (players[i].active &&
+                    (now - players[i].last_ping) > HEARTBEAT_TIMEOUT)
+                    players[i].active = 0;
+        }
+
+        if (phase == PHASE_BOMB) {
+            bomb_tick();
+            if (now > g_last_second) {
+                bomb.time_left -= (int)(now - g_last_second);
+                g_last_second = now;
+                if (bomb.time_left <= 0) {
+                    bomb.time_left = 0;
+                    bomb.exploded  = 1;
+                    /* loser is the holder */
+                    for (int i = 0; i < MAX_PLAYERS; i++)
+                        if (players[i].active && i != bomb.holder)
+                            players[i].score = 1;
+                    fprintf(stderr, "[BOMB] Exploded on %d!\n", bomb.holder);
+                    phase = PHASE_ENDED; end_ticks = 0;
+                }
             }
             for (int i = 0; i < MAX_PLAYERS; i++)
                 if (players[i].active &&
@@ -321,7 +418,7 @@ static void *game_loop(void *arg) {
             if (++end_ticks >= END_TICKS) reset_to_lobby();
         }
 
-        char json[3200], msg[3400];
+        char json[4096], msg[4400];
         build_json(json, sizeof(json));
         int ml = snprintf(msg, sizeof(msg), "STATE:%s\n", json);
         broadcast(msg, ml);
@@ -352,7 +449,6 @@ static void check_coins(int pid) {
 static void apply_action(int pid, const char *dir) {
     if (!players[pid].active) return;
     float spd = PLAYER_SPEED;
-    /* składowe */
     int left  = (strchr(dir,'L') != NULL);
     int right = (strchr(dir,'R') != NULL);
     int up    = (strchr(dir,'U') != NULL);
@@ -412,7 +508,7 @@ static void *connection_handler(void *arg) {
                         char w[32];
                         int wl = snprintf(w, sizeof(w), "WELCOME:%d\n", pid);
                         write(sock, w, wl);
-                        fprintf(stderr, "[JOIN] Gracz %d: %s\n",
+                        fprintf(stderr, "[JOIN] Player %d: %s\n",
                                 pid, players[pid].name);
                     }
                 }
@@ -425,10 +521,10 @@ static void *connection_handler(void *arg) {
                     if (cnt >= 2) {
                         phase         = PHASE_VOTING;
                         vote_left     = VOTE_DURATION;
-                        g_last_second = time(NULL);   /* ← kluczowy reset */
+                        g_last_second = time(NULL);
                         for (int i = 0; i < MAX_PLAYERS; i++)
                             players[i].vote = -1;
-                        fprintf(stderr, "[VOTE] Start glosowania\n");
+                        fprintf(stderr, "[VOTE] Start\n");
                     } else {
                         write(sock, "ERROR:Za malo graczy\n", 21);
                     }
@@ -438,8 +534,8 @@ static void *connection_handler(void *arg) {
                 int pid = clients[ci].player_id;
                 if (pid >= 0 && players[pid].active && phase == PHASE_VOTING) {
                     char v = line[5];
-                    players[pid].vote = (v=='A') ? 0 : (v=='B') ? 1 : 2;
-                    fprintf(stderr, "[VOTE] Gracz %d: %c\n", pid, v);
+                    players[pid].vote = (v=='A') ? 0 : (v=='B') ? 1 : (v=='C') ? 2 : 3;
+                    fprintf(stderr, "[VOTE] Player %d: %c\n", pid, v);
                 }
 
             } else if (strncmp(line, "ACTION:", 7) == 0) {
@@ -457,6 +553,8 @@ static void *connection_handler(void *arg) {
                     if (strchr(line+7,'D')) *py += PONG_PAD_SPEED;
                     if (*py - half < 0)      *py = half;
                     if (*py + half > PONG_H) *py = PONG_H - half;
+                } else if (phase == PHASE_BOMB && !bomb.exploded) {
+                    apply_action(pid, line + 7);
                 }
 
             } else if (strcmp(line, "PING") == 0) {
@@ -468,7 +566,7 @@ static void *connection_handler(void *arg) {
             } else if (strcmp(line, "DISPLAY") == 0) {
                 clients[ci].is_display = 1;
                 write(sock, "DISPLAY_OK\n", 11);
-                fprintf(stderr, "[DISPLAY] Podlaczony\n");
+                fprintf(stderr, "[DISPLAY] Connected\n");
             }
 
             done:
@@ -483,7 +581,7 @@ static void *connection_handler(void *arg) {
     int pid = clients[ci].player_id;
     if (pid >= 0 && pid < MAX_PLAYERS) {
         players[pid].active = 0;
-        fprintf(stderr, "[DISC] Gracz %d\n", pid);
+        fprintf(stderr, "[DISC] Player %d\n", pid);
     }
     clients[ci].active = 0; clients[ci].player_id = -1;
     pthread_mutex_unlock(&mutex);
