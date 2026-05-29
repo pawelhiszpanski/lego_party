@@ -1,3 +1,4 @@
+import math
 import pygame
 from display.constants import (
     ARENA_W, ARENA_H, PANEL_W, WIN_H,
@@ -5,6 +6,15 @@ from display.constants import (
     C, PLAYER_RGB, PLAYER_R, PHASE_LBL, PHASE_COL,
 )
 from display.fonts import Fonts
+
+
+
+def _glow_circle(surf: pygame.Surface, color: tuple, cx: int, cy: int,
+                 r: int, alpha: int = 60) -> None:
+    s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
+    pygame.draw.circle(s, (*color, alpha), (r + 2, r + 2), r)
+    surf.blit(s, (cx - r - 2, cy - r - 2))
+
 
 
 class ArenaRenderer:
@@ -18,6 +28,11 @@ class ArenaRenderer:
             pygame.draw.line(self.screen, C['grid'], (x, 0), (x, ARENA_H))
         for y in range(0, ARENA_H, 80):
             pygame.draw.line(self.screen, C['grid'], (0, y), (ARENA_W, y))
+        # subtle vignette
+        v = pygame.Surface((ARENA_W, ARENA_H), pygame.SRCALPHA)
+        for dist, alpha in ((40, 30), (80, 18), (130, 8)):
+            pygame.draw.rect(v, (0, 0, 0, alpha), (0, 0, ARENA_W, ARENA_H), dist)
+        self.screen.blit(v, (0, 0))
         pygame.draw.rect(self.screen, C['border'], (0, 0, ARENA_W, ARENA_H), 4)
 
 
@@ -26,9 +41,12 @@ class CoinRenderer:
         self.screen = screen
         self.fonts  = fonts
 
-    def draw_coin(self, x: float, y: float) -> None:
+    def draw_coin(self, x: float, y: float, tick: int = 0) -> None:
         ix, iy = int(x), int(y)
         r = 15
+        # subtle bob
+        iy += int(math.sin(tick * 0.06 + x * 0.05) * 2)
+        _glow_circle(self.screen, C['gold'], ix, iy, r + 6, 35)
         pygame.draw.circle(self.screen, (0, 0, 0),       (ix+2, iy+3), r)
         pygame.draw.circle(self.screen, C['gold'],        (ix,   iy),   r)
         pygame.draw.circle(self.screen, (255, 255, 180),  (ix-4, iy-4), r//3)
@@ -42,18 +60,23 @@ class PlayerRenderer:
         self.screen = screen
         self.fonts  = fonts
 
-    def draw_player(self, p: dict, bomb_holder: bool = False) -> None:
+    def draw_player(self, p: dict, bomb_holder: bool = False, tick: int = 0) -> None:
         x, y  = int(p['x']), int(p['y'])
         color = PLAYER_RGB.get(p.get('color', 'red'), C['white'])
         name  = p.get('name', '?')[:10]
 
+        # outer glow
+        glow_r = PLAYER_R + 10 + (int(math.sin(tick * 0.12) * 3) if bomb_holder else 0)
+        glow_c = (255, 120, 0) if bomb_holder else color
+        _glow_circle(self.screen, glow_c, x, y, glow_r, 45)
+
+        # shadow
         sh = pygame.Surface((PLAYER_R*2+6, PLAYER_R*2+6), pygame.SRCALPHA)
-        pygame.draw.circle(sh, (0,0,0,80), (PLAYER_R+3, PLAYER_R+5), PLAYER_R)
+        pygame.draw.circle(sh, (0, 0, 0, 80), (PLAYER_R+3, PLAYER_R+5), PLAYER_R)
         self.screen.blit(sh, (x - PLAYER_R, y - PLAYER_R))
 
-        # glow ring for bomb holder
         if bomb_holder:
-            pygame.draw.circle(self.screen, (255, 120, 0), (x, y), PLAYER_R + 8, 4)
+            pygame.draw.circle(self.screen, (255, 120, 0), (x, y), PLAYER_R + 8, 3)
 
         pygame.draw.circle(self.screen, color,     (x, y), PLAYER_R)
         pygame.draw.circle(self.screen, C['white'], (x, y), PLAYER_R, 2)
@@ -72,16 +95,18 @@ class PlayerRenderer:
 
 
 class PongRenderer:
-    _BALL_LERP = 0.55
-    _PAD_LERP  = 0.25
+    _BALL_LERP  = 0.55
+    _PAD_LERP   = 0.25
+    _TRAIL_LEN  = 10
 
     def __init__(self, screen: pygame.Surface, fonts: Fonts) -> None:
-        self.screen  = screen
-        self.fonts   = fonts
-        self._ball_x = float(ARENA_W / 2)
-        self._ball_y = float(ARENA_H / 2)
-        self._pad0_y = float(ARENA_H / 2)
-        self._pad1_y = float(ARENA_H / 2)
+        self.screen   = screen
+        self.fonts    = fonts
+        self._ball_x  = float(ARENA_W / 2)
+        self._ball_y  = float(ARENA_H / 2)
+        self._pad0_y  = float(ARENA_H / 2)
+        self._pad1_y  = float(ARENA_H / 2)
+        self._trail: list[tuple[float, float]] = []
 
     def draw(self, state: dict, show_win_overlay: bool = False) -> None:
         pg  = state.get('pong', {})
@@ -104,44 +129,61 @@ class PongRenderer:
         ip0y = int(self._pad0_y)
         ip1y = int(self._pad1_y)
 
-        pygame.draw.rect(self.screen, C['pong_bg'], (0, 0, ARENA_W, ARENA_H))
-        for y in range(8, ARENA_H, 24):
-            pygame.draw.rect(self.screen, C['mid_line'],
-                             (ARENA_W//2 - 3, y, 6, 14))
+        # update trail
+        self._trail.append((self._ball_x, self._ball_y))
+        if len(self._trail) > self._TRAIL_LEN:
+            self._trail.pop(0)
 
+        pygame.draw.rect(self.screen, C['pong_bg'], (0, 0, ARENA_W, ARENA_H))
+
+        # center dashes
+        for y in range(8, ARENA_H, 24):
+            pygame.draw.rect(self.screen, C['mid_line'], (ARENA_W//2 - 3, y, 6, 14))
+
+        # scores
         s0s = self.fonts.xl.render(str(s0), True, C['pad0'])
         s1s = self.fonts.xl.render(str(s1), True, C['pad1'])
-        self.screen.blit(s0s, (ARENA_W//4     - s0s.get_width()//2, 18))
-        self.screen.blit(s1s, (3*ARENA_W//4   - s1s.get_width()//2, 18))
+        self.screen.blit(s0s, (ARENA_W//4   - s0s.get_width()//2, 18))
+        self.screen.blit(s1s, (3*ARENA_W//4 - s1s.get_width()//2, 18))
 
-        info = self.fonts.xs.render('PIERWSZE DO 3 PKT', True, C['dim'])
+        info = self.fonts.xs.render('FIRST TO 3 POINTS', True, C['dim'])
         self.screen.blit(info, (ARENA_W//2 - info.get_width()//2, 72))
 
-        spd_s = self.fonts.xs.render(f'predkosc: {spd:.0f}', True, C['dim'])
+        spd_s = self.fonts.xs.render(f'speed: {spd:.0f}', True, C['dim'])
         self.screen.blit(spd_s, (ARENA_W//2 - spd_s.get_width()//2, ARENA_H - 22))
 
+        # pads
         self._draw_pad(PAD_X0, ip0y, C['pad0'], -14)
         self._draw_pad(PAD_X1, ip1y, C['pad1'], -12)
 
-        pygame.draw.circle(self.screen, (160,160,160), (ibx+2, iby+2), BALL_R)
-        pygame.draw.circle(self.screen, C['white'],     (ibx,   iby),   BALL_R)
-        pygame.draw.circle(self.screen, (220,220,255),  (ibx-3, iby-3), BALL_R//3)
+        # ball trail
+        for i, (tx, ty) in enumerate(self._trail[:-1]):
+            alpha = int(120 * (i / self._TRAIL_LEN))
+            r     = max(2, int(BALL_R * 0.6 * (i / self._TRAIL_LEN)))
+            ts    = pygame.Surface((r*2+2, r*2+2), pygame.SRCALPHA)
+            pygame.draw.circle(ts, (220, 220, 255, alpha), (r+1, r+1), r)
+            self.screen.blit(ts, (int(tx) - r - 1, int(ty) - r - 1))
+
+        # ball glow + ball
+        _glow_circle(self.screen, C['white'], ibx, iby, BALL_R + 8, 50)
+        pygame.draw.circle(self.screen, (160, 160, 160), (ibx+2, iby+2), BALL_R)
+        pygame.draw.circle(self.screen, C['white'],      (ibx,   iby),   BALL_R)
+        pygame.draw.circle(self.screen, (220, 220, 255), (ibx-3, iby-3), BALL_R//3)
 
         pygame.draw.rect(self.screen, C['border'], (0, 0, ARENA_W, ARENA_H), 4)
 
-        # win overlay only during active pong phase, not on ended screen
         if show_win_overlay and win >= 0:
             col = C['pad0'] if win == 0 else C['pad1']
-            ov  = self.fonts.xl.render(f'Druzyna {win} wygrywa!', True, col)
+            ov  = self.fonts.xl.render(f'Team {win} wins!', True, col)
             self.screen.blit(ov, (ARENA_W//2 - ov.get_width()//2, ARENA_H//2 - 30))
 
     def _draw_pad(self, px: int, py: int, color: tuple, glow_off: int) -> None:
+        _glow_circle(self.screen, color, px + PAD_W//2, py, PAD_H//2 + 10, 35)
         pygame.draw.rect(self.screen, color,
                          (px, py - PAD_H//2, PAD_W, PAD_H), border_radius=5)
-        glow = pygame.Surface((40, PAD_H+20), pygame.SRCALPHA)
-        glow.fill((0,0,0,0))
-        pygame.draw.rect(glow, (*color, 40), (0, 0, 40, PAD_H+20), border_radius=8)
-        self.screen.blit(glow, (px + glow_off, py - PAD_H//2 - 10))
+        shine = pygame.Surface((PAD_W, PAD_H), pygame.SRCALPHA)
+        pygame.draw.rect(shine, (255, 255, 255, 25), (0, 0, PAD_W, PAD_H//2), border_radius=5)
+        self.screen.blit(shine, (px, py - PAD_H//2))
 
 
 class VotingRenderer:
@@ -153,7 +195,7 @@ class VotingRenderer:
         pygame.draw.rect(self.screen, C['arena'],  (0, 0, ARENA_W, ARENA_H))
         pygame.draw.rect(self.screen, C['border'], (0, 0, ARENA_W, ARENA_H), 4)
 
-        title = self.fonts.lg.render('WYBIERZ GRE', True, C['gold'])
+        title = self.fonts.lg.render('CHOOSE YOUR GAME', True, C['gold'])
         self.screen.blit(title, (ARENA_W//2 - title.get_width()//2, 30))
 
         vl = state.get('vote_left', 10)
@@ -162,10 +204,10 @@ class VotingRenderer:
         self.screen.blit(ts, (ARENA_W//2 - ts.get_width()//2, 76))
 
         options = [
-            ('A', '\U0001fa99', 'Monety', state.get('va', 0), C['vote_a']),
+            ('A', '\U0001fa99', 'Coins',  state.get('va', 0), C['vote_a']),
             ('B', '\U0001f3d3', 'Pong',   state.get('vb', 0), C['vote_b']),
-            ('C', '\U0001f4a3', 'Bomba',  state.get('vc', 0), C['vote_c']),
-            ('D', '\U0001f3b2', 'Losowo', state.get('vd', 0), (70, 70, 100)),
+            ('C', '\U0001f4a3', 'Bomb',   state.get('vc', 0), C['vote_c']),
+            ('D', '\U0001f3b2', 'Random', state.get('vd', 0), (70, 70, 100)),
         ]
         bw, bh, gap = 190, 118, 16
         total_w = 2*bw + gap
@@ -176,10 +218,13 @@ class VotingRenderer:
             row_idx = i // 2
             bx = bx0 + col_idx * (bw + gap)
             by = 165 + row_idx * (bh + 12)
+
+            # card with glow
+            _glow_circle(self.screen, col, bx + bw//2, by + bh//2, bh//2 + 8, 20)
             pygame.draw.rect(self.screen, col, (bx, by, bw, bh), border_radius=18)
-            inner = pygame.Surface((bw-4, bh-4), pygame.SRCALPHA)
-            inner.fill((*col, 100))
-            self.screen.blit(inner, (bx+2, by+2))
+            shine = pygame.Surface((bw - 4, bh//2), pygame.SRCALPHA)
+            pygame.draw.rect(shine, (255, 255, 255, 20), (0, 0, bw-4, bh//2), border_radius=14)
+            self.screen.blit(shine, (bx+2, by+2))
 
             ls  = self.fonts.xl.render(ltr,            True, C['white'])
             ems = self.fonts.md.render(emoji+' '+name, True, C['white'])
@@ -211,24 +256,45 @@ class VotingRenderer:
 
 
 class LobbyRenderer:
+    _N_STARS = 40
+
     def __init__(self, screen: pygame.Surface, fonts: Fonts,
                  arena: ArenaRenderer, player_r: PlayerRenderer) -> None:
         self.screen   = screen
         self.fonts    = fonts
         self.arena    = arena
         self.player_r = player_r
+        self._tick    = 0
+        # static star positions
+        import random
+        rng = random.Random(42)
+        self._stars = [
+            (rng.randint(10, ARENA_W-10), rng.randint(10, ARENA_H-10),
+             rng.uniform(0.4, 1.0), rng.uniform(0, math.tau))
+            for _ in range(self._N_STARS)
+        ]
 
     def draw(self, state: dict) -> None:
+        self._tick += 1
         self.arena.draw(state)
+
+        # drifting star particles
+        for sx, sy, spd, phase in self._stars:
+            alpha = int(30 + 25 * math.sin(self._tick * spd * 0.04 + phase))
+            r     = 2
+            s = pygame.Surface((r*2+2, r*2+2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (150, 150, 220, alpha), (r+1, r+1), r)
+            self.screen.blit(s, (sx - r - 1, sy - r - 1))
+
         players = state.get('players', [])
         cnt     = len(players)
 
         lbl1 = self.fonts.lg.render('LOBBY', True, C['gold'])
-        lbl2 = self.fonts.md.render(f'Graczy: {cnt} / 4', True, C['white'])
+        lbl2 = self.fonts.md.render(f'Players: {cnt} / 4', True, C['white'])
         lbl3 = (
-            self.fonts.sm.render('Kliknij  START GAME  na telefonie', True, C['green'])
+            self.fonts.sm.render('Press  START GAME  on your phone', True, C['green'])
             if cnt >= 2 else
-            self.fonts.sm.render('Potrzeba minimum 2 graczy...', True, C['dim'])
+            self.fonts.sm.render('Need at least 2 players...', True, C['dim'])
         )
 
         self.screen.blit(lbl1, (ARENA_W//2 - lbl1.get_width()//2, ARENA_H//2 - 70))
@@ -244,11 +310,8 @@ class LobbyRenderer:
 
 
 class BombRenderer:
-    """Hot Potato game renderer."""
-
     _BOMB_COLOR   = (255, 120,  0)
     _FUSE_COLOR   = (255, 220, 50)
-    _SAFE_COLOR   = (55,  200, 75)
     _DANGER_COLOR = (220,  55, 55)
 
     def __init__(self, screen: pygame.Surface, fonts: Fonts,
@@ -265,99 +328,72 @@ class BombRenderer:
 
         bomb     = state.get('bomb', {})
         holder   = bomb.get('holder', -1)
-        tl       = bomb.get('time_left', 0)
         exploded = bomb.get('exploded', 0)
         players  = state.get('players', [])
 
-        # draw players
         for p in players:
             is_holder = (p.get('id', -1) == holder)
-            self.player_r.draw_player(p, bomb_holder=is_holder)
+            self.player_r.draw_player(p, bomb_holder=is_holder, tick=self._tick)
 
-        # draw bomb icon on holder
+        # bomb icon above holder
         for p in players:
             if p.get('id', -1) == holder:
                 bx = int(p['x'])
-                by = int(p['y']) - PLAYER_R - 36
-                self._draw_bomb_icon(bx, by, tl, exploded)
+                by = int(p['y']) - PLAYER_R - 38
+                self._draw_bomb_icon(bx, by, exploded)
                 break
 
-        # timer bar at top
-        self._draw_timer(tl, exploded)
-
-        # pass-range circle around holder (subtle)
+        # pass-range aura
         if not exploded and holder >= 0:
             for p in players:
                 if p.get('id', -1) == holder:
                     px, py = int(p['x']), int(p['y'])
-                    surf = pygame.Surface((120, 120), pygame.SRCALPHA)
-                    pygame.draw.circle(surf, (255,120,0,30), (60,60), 60)
-                    pygame.draw.circle(surf, (255,120,0,80), (60,60), 60, 2)
-                    self.screen.blit(surf, (px-60, py-60))
+                    _glow_circle(self.screen, (255, 120, 0), px, py, 60, 18)
+                    s = pygame.Surface((122, 122), pygame.SRCALPHA)
+                    pygame.draw.circle(s, (255, 120, 0, 55), (61, 61), 60, 2)
+                    self.screen.blit(s, (px - 61, py - 61))
                     break
+
+        # tick indicator (no time shown)
+        self._draw_tick_indicator()
 
         pygame.draw.rect(self.screen, C['border'], (0, 0, ARENA_W, ARENA_H), 4)
 
-    def _draw_bomb_icon(self, cx: int, cy: int, tl: int, exploded: int) -> None:
+    def _draw_bomb_icon(self, cx: int, cy: int, exploded: int) -> None:
         t = self._tick
-        urgent = tl <= 10 and not exploded
-
-        # pulse when urgent
-        r = 18 + (3 if urgent and (t // 8) % 2 == 0 else 0)
+        r = 18
 
         if exploded:
-            # explosion burst
-            for a in range(0, 360, 30):
-                import math
-                rad = math.radians(a)
+            for angle in range(0, 360, 30):
+                rad = math.radians(angle)
                 ex  = cx + int(math.cos(rad) * (r + 14))
                 ey  = cy + int(math.sin(rad) * (r + 14))
                 pygame.draw.circle(self.screen, (255, 200, 0), (ex, ey), 5)
-            pygame.draw.circle(self.screen, (255, 80, 0), (cx, cy), r+8)
-            lbl = self.fonts.lg.render('!', True, C['white'])
+            pygame.draw.circle(self.screen, (255, 80, 0), (cx, cy), r + 8)
+            lbl = self.fonts.lg.render('BOOM!', True, C['white'])
             self.screen.blit(lbl, (cx - lbl.get_width()//2, cy - lbl.get_height()//2))
             return
 
-        # shadow
-        pygame.draw.circle(self.screen, (0,0,0), (cx+3, cy+4), r)
-        # body
-        col = self._DANGER_COLOR if urgent else self._BOMB_COLOR
-        pygame.draw.circle(self.screen, col, (cx, cy), r)
-        pygame.draw.circle(self.screen, (0,0,0), (cx, cy), r, 2)
-        # shine
-        pygame.draw.circle(self.screen, (255,200,100), (cx-r//3, cy-r//3), r//4)
-        # fuse spark (blinks)
+        _glow_circle(self.screen, self._BOMB_COLOR, cx, cy, r + 14, 40)
+        pygame.draw.circle(self.screen, (0, 0, 0), (cx+3, cy+4), r)
+        pygame.draw.circle(self.screen, self._BOMB_COLOR, (cx, cy), r)
+        pygame.draw.circle(self.screen, (0, 0, 0), (cx, cy), r, 2)
+        pygame.draw.circle(self.screen, (255, 200, 100), (cx - r//3, cy - r//3), r//4)
         if (t // 5) % 2 == 0:
-            pygame.draw.circle(self.screen, self._FUSE_COLOR,
-                               (cx + r//2, cy - r - 4), 5)
+            pygame.draw.circle(self.screen, self._FUSE_COLOR, (cx + r//2, cy - r - 4), 5)
         lbl = self.fonts.md.render('\U0001f4a3', True, C['white'])
         self.screen.blit(lbl, (cx - lbl.get_width()//2, cy - lbl.get_height()//2))
 
-    def _draw_timer(self, tl: int, exploded: int) -> None:
-        max_w = ARENA_W - 80
-        bar_h = 14
-        bx    = 40
-        by    = 14
-
-        # background
-        pygame.draw.rect(self.screen, (30,30,50), (bx, by, max_w, bar_h), border_radius=7)
-
-        if not exploded and tl > 0:
-            ratio = min(tl / 45.0, 1.0)
-            fill  = int(max_w * ratio)
-            r = int(220 * (1 - ratio))
-            g = int(200 * ratio)
-            bar_col = (r, g, 20)
-            if fill > 0:
-                pygame.draw.rect(self.screen, bar_col,
-                                 (bx, by, fill, bar_h), border_radius=7)
-
-        pygame.draw.rect(self.screen, C['dim'], (bx, by, max_w, bar_h), 2, border_radius=7)
-
-        label = ('WYBUCH!' if exploded else f'Bomba: {tl}s')
-        col   = self._DANGER_COLOR if (exploded or tl <= 10) else C['white']
-        lbl   = self.fonts.sm.render(label, True, col)
-        self.screen.blit(lbl, (ARENA_W//2 - lbl.get_width()//2, by + bar_h + 6))
+    def _draw_tick_indicator(self) -> None:
+        t  = self._tick
+        cx = ARENA_W // 2
+        cy = 22
+        for i, offset in enumerate((-30, 0, 30)):
+            phase = (t // 12 + i) % 3
+            alpha = 220 if phase == 0 else 60
+            s = pygame.Surface((14, 14), pygame.SRCALPHA)
+            pygame.draw.circle(s, (255, 120, 0, alpha), (7, 7), 7)
+            self.screen.blit(s, (cx + offset - 7, cy - 7))
 
 
 class PanelRenderer:
@@ -367,9 +403,17 @@ class PanelRenderer:
         self.fonts         = fonts
         self._connected_fn = connected_ref
 
-    def draw(self, state: dict) -> None:
+    def draw(self, state: dict, fps: float = 0.0) -> None:
         px = ARENA_W
         pygame.draw.rect(self.screen, C['panel'], (px, 0, PANEL_W, WIN_H))
+
+        # gradient-like left strip
+        for i in range(4):
+            alpha = 20 - i * 5
+            s = pygame.Surface((1, WIN_H), pygame.SRCALPHA)
+            s.fill((255, 255, 255, alpha))
+            self.screen.blit(s, (px + i, 0))
+
         pygame.draw.line(self.screen, C['border'], (px, 0), (px, WIN_H), 2)
 
         phase   = state.get('phase', 0)
@@ -395,7 +439,7 @@ class PanelRenderer:
         pygame.draw.line(self.screen, C['border'],
                          (px+10, cy), (px+PANEL_W-10, cy)); cy += 10
 
-        sc_l = self.fonts.sm.render('WYNIKI', True, C['dim'])
+        sc_l = self.fonts.sm.render('SCORES', True, C['dim'])
         self.screen.blit(sc_l, (px + PANEL_W//2 - sc_l.get_width()//2, cy)); cy += 22
 
         rnk = ['1.','2.','3.','4.']
@@ -414,9 +458,14 @@ class PanelRenderer:
             self.screen.blit(sc, (px+PANEL_W-18-sc.get_width(), cy+8))
             cy += 46
 
+        # connection status
         ok = self._connected_fn()
         st = self.fonts.xs.render(
-            'Polaczono' if ok else 'Rozlaczono...',
+            'Connected' if ok else 'Disconnected',
             True, C['green'] if ok else C['red'],
         )
-        self.screen.blit(st, (px + PANEL_W//2 - st.get_width()//2, WIN_H - 20))
+        self.screen.blit(st, (px + PANEL_W//2 - st.get_width()//2, WIN_H - 32))
+
+        # FPS counter
+        fps_s = self.fonts.xs.render(f'{fps:.0f} fps', True, C['dim'])
+        self.screen.blit(fps_s, (px + PANEL_W//2 - fps_s.get_width()//2, WIN_H - 16))

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -23,7 +23,7 @@
     .screen {
       display: none; flex-direction: column;
       align-items: center; width: 100%; max-width: 440px;
-      min-height: 100dvh; padding: 22px 16px 10px; gap: 12px;
+      min-height: 100dvh; padding: 22px 16px 10px; gap: 14px;
     }
     .screen.active { display: flex; }
 
@@ -31,7 +31,8 @@
     .title { font-size: 2rem; font-weight: 900; color: #ffd700;
              text-shadow: 0 0 24px rgba(255,215,0,.55); letter-spacing: 2px; }
     .sub   { color: #70709a; font-size: .95rem; text-align: center; }
-    input[type=text] {
+
+    input[type=text], input[type=number] {
       background: #1c1c30; border: 2.5px solid #e04060;
       color: #fff; padding: 14px 20px; border-radius: 14px;
       font-size: 1.25rem; width: 100%; max-width: 320px;
@@ -46,18 +47,36 @@
       transition: transform .07s, opacity .1s;
     }
     .btn:active { transform: scale(.93); opacity: .85; }
-    .btn-join  { background: linear-gradient(135deg,#e04060,#b02040); }
-    .btn-start {
-      background: linear-gradient(135deg,#3ccf70,#1a9040);
-      font-size: 1.4rem; padding: 22px 0;
-    }
-    .btn-start:disabled {
-      background: #2a2a42; color: #404055; cursor: default;
-    }
+    .btn-next   { background: linear-gradient(135deg,#e04060,#b02040); }
+    .btn-create { background: linear-gradient(135deg,#3ccf70,#1a9040);
+                  font-size: 1.3rem; padding: 20px 0; }
+    .btn-join-r { background: linear-gradient(135deg,#3c6edc,#1a3a90); }
+    .btn-start  { background: linear-gradient(135deg,#3ccf70,#1a9040);
+                  font-size: 1.4rem; padding: 22px 0; }
+    .btn-start:disabled { background: #2a2a42; color: #404055; cursor: default; }
 
     #status { font-size: .88rem; text-align: center; }
     .ok  { color: #4cde70; } .err { color: #e04060; } .dim { color: #50506a; }
 
+    /* room screen */
+    .divider { color: #404060; font-size: .9rem; width: 100%; max-width: 320px;
+               text-align: center; padding: 4px 0; }
+    .join-row { display: flex; gap: 8px; width: 100%; max-width: 320px; }
+    .join-row input { flex: 1; max-width: none; }
+    .join-row .btn  { width: auto; padding: 14px 20px; max-width: none; flex-shrink: 0; font-size:1rem; }
+
+    /* PIN display badge */
+    .pin-badge {
+      background: #1c1c30; border: 2px solid #ffd700;
+      border-radius: 16px; padding: 12px 20px;
+      text-align: center; width: 100%;
+    }
+    .pin-badge .pin-label { color: #70709a; font-size: .8rem; letter-spacing: 1px; }
+    .pin-badge .pin-code  { font-size: 2.6rem; font-weight: 900; color: #ffd700;
+                            letter-spacing: 8px; }
+    .pin-badge .pin-hint  { color: #50506a; font-size: .75rem; }
+
+    /* player bar */
     .player-bar {
       display: flex; align-items: center; gap: 10px;
       background: #1c1c30; border-radius: 14px;
@@ -82,9 +101,7 @@
     #lobby-info { color: #70709a; font-size: .95rem; text-align: center; }
 
     .vote-title { font-size: 1.1rem; font-weight: 700; color: #ffd700; }
-    .vote-timer {
-      font-size: 3rem; font-weight: 900; color: #fff; line-height: 1;
-    }
+    .vote-timer { font-size: 3rem; font-weight: 900; color: #fff; line-height: 1; }
     .vote-timer.urgent { color: #e04060; animation: blink .5s infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
     .vote-grid {
@@ -115,49 +132,32 @@
       align-items: center; justify-content: center;
       width: 100%; gap: 10px;
     }
-    .joy-label {
-      color: #50506a; font-size: .85rem; letter-spacing: 1px;
-    }
+    .joy-label { color: #50506a; font-size: .85rem; letter-spacing: 1px; }
     #joy-outer {
-      width: min(60vw, 220px);
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background: #1a1a2e;
-      border: 3px solid #2a2a48;
-      position: relative;
+      width: min(60vw, 220px); aspect-ratio: 1;
+      border-radius: 50%; background: #1a1a2e;
+      border: 3px solid #2a2a48; position: relative;
       touch-action: none;
-      box-shadow: 0 0 40px rgba(76,222,112,.08),
-                  inset 0 0 30px rgba(0,0,0,.5);
+      box-shadow: 0 0 40px rgba(76,222,112,.08), inset 0 0 30px rgba(0,0,0,.5);
     }
-
-    #joy-outer::before,
-    #joy-outer::after {
-      content: '';
-      position: absolute;
-      top: 50%; left: 50%;
+    #joy-outer::before, #joy-outer::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      background: rgba(255,255,255,.05);
-      border-radius: 50%;
+      background: rgba(255,255,255,.05); border-radius: 50%;
     }
     #joy-outer::before { width: 66%; height: 66%; }
     #joy-outer::after  { width: 33%; height: 33%; }
 
     #joy-knob {
-      position: absolute;
-      width: 38%;
-      aspect-ratio: 1;
+      position: absolute; width: 38%; aspect-ratio: 1;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #7adf9a, #2a9a50);
       border: 3px solid rgba(255,255,255,.35);
       box-shadow: 0 4px 20px rgba(0,0,0,.5);
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      transition: none;
-      pointer-events: none;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      transition: none; pointer-events: none;
     }
-    #joy-knob.idle {
-      transition: top .15s ease, left .15s ease;
-    }
+    #joy-knob.idle { transition: top .15s ease, left .15s ease; }
     .joy-dir-indicator {
       width: 60px; height: 60px;
       display: flex; align-items: center; justify-content: center;
@@ -166,50 +166,32 @@
     }
 
     #panel-dpad {
-      flex: 1; display: none;
-      flex-direction: column;
+      flex: 1; display: none; flex-direction: column;
       align-items: center; justify-content: center;
       width: 100%; gap: 16px;
     }
-    .pong-hint {
-      color: #70709a; font-size: .9rem; text-align: center;
-      line-height: 1.5;
-    }
-    .dpad-pong {
-      display: flex; flex-direction: column;
-      align-items: center; gap: 12px;
-      width: min(88vw, 320px);
-    }
-    .dpad-row { display: flex; gap: 12px; width: 100%; }
+    .pong-hint { color: #70709a; font-size: .9rem; text-align: center; line-height: 1.5; }
+    .dpad-pong { display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(88vw, 320px); }
+    .dpad-row  { display: flex; gap: 12px; width: 100%; }
     .db {
       flex: 1; background: #1c1c30;
       border: 3px solid #2c2c48; border-radius: 20px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 2.4rem; cursor: pointer;
-      padding: 28px 0;
+      font-size: 2.4rem; cursor: pointer; padding: 28px 0;
       box-shadow: 0 4px 14px rgba(0,0,0,.4);
       transition: background .07s, transform .05s, border-color .07s;
     }
-    .db:active, .db.pressed {
-      background: #b040de; border-color: #d060ff;
-      transform: scale(.90);
-    }
+    .db:active, .db.pressed { background: #b040de; border-color: #d060ff; transform: scale(.90); }
     .pong-score-bar {
       display: flex; justify-content: space-around;
       width: 100%; padding: 10px;
       background: #1c1c30; border-radius: 14px;
     }
-    .team-score {
-      display: flex; flex-direction: column;
-      align-items: center; gap: 4px;
-    }
+    .team-score { display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .team-score .ts-label { font-size: .75rem; color: #70709a; }
     .team-score .ts-num   { font-size: 2rem; font-weight: 900; }
 
-    .bottom {
-      width: 100%; text-align: center;
-      font-size: .78rem; color: #30304a; padding-bottom: 4px;
-    }
+    .bottom { width: 100%; text-align: center; font-size: .78rem; color: #30304a; padding-bottom: 4px; }
   </style>
 </head>
 <body>
@@ -217,18 +199,37 @@
 <div id="screen-join" class="screen active">
   <div class="logo">🎮</div>
   <div class="title">PARTY GAME</div>
-  <div class="sub">Wpisz imię i dołącz jako kontroler</div>
-  <input type="text" id="player-name" placeholder="Twoje imię…"
+  <div class="sub">Enter your name to get started</div>
+  <input type="text" id="player-name" placeholder="Your name…"
          maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false">
-  <button class="btn btn-join" onclick="joinGame()">DOŁĄCZ DO GRY</button>
-  <div id="status" class="dim">Łączenie z serwerem…</div>
+  <button class="btn btn-next" onclick="goToRoom()">NEXT →</button>
+  <div id="status" class="dim">Connecting to server…</div>
+</div>
+
+<div id="screen-room" class="screen">
+  <div class="logo">🚪</div>
+  <div class="title">PARTY GAME</div>
+  <div id="room-player-badge" class="player-bar" style="justify-content:center">
+    <span class="pname" id="room-player-name" style="text-align:center;flex:none"></span>
+  </div>
+
+  <button class="btn btn-create" onclick="createRoom()">✦ CREATE NEW ROOM</button>
+
+  <div class="divider">─── or join existing ───</div>
+
+  <div class="join-row">
+    <input type="number" id="room-pin-input" placeholder="PIN…" maxlength="4" min="1000" max="9999">
+    <button class="btn btn-join-r" onclick="joinRoom()">JOIN</button>
+  </div>
+
+  <div id="room-status" class="dim" style="font-size:.9rem;text-align:center"></div>
 </div>
 
 <div id="screen-game" class="screen">
 
   <div class="player-bar">
     <div class="dot" id="color-dot"></div>
-    <span class="pname" id="disp-name">Gracz</span>
+    <span class="pname" id="disp-name">Player</span>
     <span style="font-size:1rem">🪙</span>
     <span class="pscore" id="disp-score">0</span>
   </div>
@@ -237,19 +238,23 @@
 
   <div id="panel-lobby"
        style="width:100%;display:flex;flex-direction:column;align-items:center;gap:14px;">
-    <div id="lobby-info" class="dim">Oczekiwanie na graczy…</div>
-    <button class="btn btn-start" id="btn-start"
-            onclick="sendStart()" disabled>START GAME</button>
+    <div class="pin-badge" id="lobby-pin-badge">
+      <div class="pin-label">ROOM PIN</div>
+      <div class="pin-code" id="lobby-pin-code">----</div>
+      <div class="pin-hint">Share this with your friends!</div>
+    </div>
+    <div id="lobby-info" class="dim">Waiting for players…</div>
+    <button class="btn btn-start" id="btn-start" onclick="sendStart()" disabled>START GAME</button>
   </div>
 
   <div id="panel-vote"
        style="width:100%;display:none;flex-direction:column;align-items:center;gap:12px;">
-    <div class="vote-title">Głosuj na grę! (możesz zmienić)</div>
+    <div class="vote-title">Vote for a game! (you can change)</div>
     <div class="vote-timer" id="vote-timer">10s</div>
     <div class="vote-grid">
       <button class="vote-btn va" id="vbtn-A" onclick="vote('A')">
         <span class="vletter">A</span>
-        <span class="vname">Monety 🪙</span>
+        <span class="vname">Coins 🪙</span>
         <span class="vcnt" id="vcnt-a">0</span>
       </button>
       <button class="vote-btn vb" id="vbtn-B" onclick="vote('B')">
@@ -259,16 +264,16 @@
       </button>
       <button class="vote-btn vc" id="vbtn-C" onclick="vote('C')">
         <span class="vletter">C</span>
-        <span class="vname">Bomba 💣</span>
+        <span class="vname">Bomb 💣</span>
         <span class="vcnt" id="vcnt-c">0</span>
       </button>
       <button class="vote-btn vd" id="vbtn-D" onclick="vote('D')">
         <span class="vletter">D</span>
-        <span class="vname">Losowo 🎲</span>
+        <span class="vname">Random 🎲</span>
         <span class="vcnt" id="vcnt-d">0</span>
       </button>
     </div>
-    <div class="voted-lbl" id="voted-label" style="display:none">✓ Zagłosowano!</div>
+    <div class="voted-lbl" id="voted-label" style="display:none">✓ Voted!</div>
   </div>
 
   <div id="panel-joystick">
@@ -282,18 +287,16 @@
   <div id="panel-dpad">
     <div class="pong-score-bar" id="pong-score-bar">
       <div class="team-score">
-        <span class="ts-label" style="color:#3c6edc">TWOJA DRUŻYNA</span>
+        <span class="ts-label" style="color:#3c6edc">YOUR TEAM</span>
         <span class="ts-num" id="pong-my-score" style="color:#3c6edc">0</span>
       </div>
       <div style="color:#404060;font-size:1.5rem;align-self:center">VS</div>
       <div class="team-score">
-        <span class="ts-label" style="color:#dc3c3c">PRZECIWNIK</span>
+        <span class="ts-label" style="color:#dc3c3c">OPPONENT</span>
         <span class="ts-num" id="pong-op-score" style="color:#dc3c3c">0</span>
       </div>
     </div>
-    <div class="pong-hint">
-      Przesuwaj paletkę<br><strong>GÓRA / DÓŁ</strong>
-    </div>
+    <div class="pong-hint">Move your paddle up or down</div>
     <div class="dpad-pong">
       <div class="dpad-row">
         <div class="db" id="btn-U"
@@ -317,46 +320,79 @@
 
 let ws = null, wsOk = false;
 let myId = -1, myName = '', myTeam = -1;
-let myVote = null;
+let myVote = null, myRoomPin = '';
 let intervals = {};
 const REPEAT = 80;
 
 const COLOR_CSS = {red:'#dc3c3c',blue:'#3c6edc',green:'#3cc850',yellow:'#f0c828'};
 const PHASE = {LOBBY:0,VOTING:1,COINS:2,PONG:3,ENDED:4,BOMB:5};
 const BN_CLS = ['bn-lobby','bn-vote','bn-coins','bn-pong','bn-ended','bn-pong'];
-const BN_TXT = ['⏳ Lobby…','🗳 Głosowanie!','🪙 Zbieranie Monet','🏓 PONG!','🏆 Koniec!','💣 Hot Potato!'];
+const BN_TXT = ['⏳ Lobby…','🗳 Voting!','🪙 Coins','🏓 PONG!','🏆 Game Over!','💣 Hot Potato!'];
+
 
 function connectWS() {
   const host = window.location.hostname;
   const port = window.location.port || '8080';
   ws = new WebSocket(`ws://${host}:${port}/ws`);
-  ws.onopen    = () => { wsOk = true;  setStatus('Połączono ✓','ok'); };
-  ws.onclose   = () => { wsOk = false; setStatus('Rozłączono…','err'); setTimeout(connectWS,2000); };
-  ws.onerror   = ()  => setStatus('Błąd WebSocket','err');
+  ws.onopen    = () => { wsOk = true;  setStatus('Connected ✓','ok'); };
+  ws.onclose   = () => { wsOk = false; setStatus('Disconnected…','err'); setTimeout(connectWS,2000); };
+  ws.onerror   = ()  => setStatus('WebSocket error','err');
   ws.onmessage = ev  => handleMsg(ev.data.trim());
 }
+
 function handleMsg(msg) {
-  if (msg.startsWith('WELCOME:')) {
-    myId = parseInt(msg.slice(8)); showGame();
+  if (msg.startsWith('ROOM:')) {
+    myRoomPin = msg.slice(5);
+    document.getElementById('lobby-pin-code').textContent = myRoomPin;
+  } else if (msg.startsWith('WELCOME:')) {
+    myId = parseInt(msg.slice(8));
+    showGame();
   } else if (msg.startsWith('STATE:')) {
     try { updateUI(JSON.parse(msg.slice(6))); } catch(_){}
   } else if (msg.startsWith('ERROR:')) {
-    setStatus('⚠️ '+msg.slice(6),'err');
+    const errTxt = msg.slice(6);
+    setStatus('⚠️ ' + errTxt, 'err');
+    setRoomStatus('⚠️ ' + errTxt, 'err');
+  } else if (msg === 'PONG') {
+    /* heartbeat reply */
   }
 }
 
-function joinGame() {
+
+function goToRoom() {
   const n = document.getElementById('player-name').value.trim();
-  if (!n)    { setStatus('Podaj imię!','err'); return; }
-  if (!wsOk) { setStatus('Brak połączenia','err'); return; }
-  myName = n; send(`JOIN:${n}`);
+  if (!n) { setStatus('Please enter your name!', 'err'); return; }
+  if (!wsOk) { setStatus('Not connected – please wait…', 'err'); return; }
+  myName = n;
+  document.getElementById('room-player-name').textContent = '👤 ' + myName;
+  document.getElementById('screen-join').classList.remove('active');
+  document.getElementById('screen-room').classList.add('active');
+  setRoomStatus('');
 }
+
+function createRoom() {
+  if (!wsOk) { setRoomStatus('Not connected', 'err'); return; }
+  setRoomStatus('Creating room…', 'dim');
+  send(`CREATE:${myName}`);
+}
+
+function joinRoom() {
+  const pin = document.getElementById('room-pin-input').value.trim();
+  if (pin.length !== 4 || isNaN(pin)) { setRoomStatus('Enter a 4-digit PIN', 'err'); return; }
+  if (!wsOk) { setRoomStatus('Not connected', 'err'); return; }
+  setRoomStatus('Joining…', 'dim');
+  send(`JOIN:${pin}:${myName}`);
+}
+
 function showGame() {
   document.getElementById('screen-join').classList.remove('active');
+  document.getElementById('screen-room').classList.remove('active');
   document.getElementById('screen-game').classList.add('active');
   document.getElementById('disp-name').textContent = myName;
+  document.getElementById('lobby-pin-code').textContent = myRoomPin || '----';
   startPing();
 }
+
 
 function sendStart() { send('START'); }
 function vote(opt) {
@@ -381,79 +417,75 @@ function release(dir, ev) {
 }
 function sendAction(dir) { send(`ACTION:${dir}`); }
 
+
 (function setupJoystick() {
-  const outer   = document.getElementById('joy-outer');
-  const knob    = document.getElementById('joy-knob');
-  const dirEl   = document.getElementById('joy-dir');
+  const outer = document.getElementById('joy-outer');
+  const knob  = document.getElementById('joy-knob');
+  const dirEl = document.getElementById('joy-dir');
 
-  let active    = false;
-  let joyTimer  = null;
-  let curDirX   = 0, curDirY = 0; // -1..1
+  let active   = false;
+  let joyTimer = null;
+  let curX = 0, curY = 0;
 
-  const DEAD    = 0.18;
-  const MAX_R   = 0.22;
-  const DIR_ARROWS = { '':' ● ','U':'▲','D':'▼','L':'◀','R':'▶',
-                        'RU':'↗','RD':'↘','LU':'↖','LD':'↙' };
+  const DEAD  = 0.12;
+  const MAX_R = 0.22;
 
   function getPos(ev) {
     const t   = ev.touches ? ev.touches[0] : ev;
     const r   = outer.getBoundingClientRect();
     const cx  = r.left + r.width  / 2;
     const cy  = r.top  + r.height / 2;
-    let dx  = t.clientX - cx;
-    let dy  = t.clientY - cy;
+    let dx    = t.clientX - cx;
+    let dy    = t.clientY - cy;
     const rad = r.width / 2;
     const dist = Math.hypot(dx, dy);
-    if (dist > rad) { dx *= rad/dist; dy *= rad/dist; }
+    if (dist > rad) { dx *= rad / dist; dy *= rad / dist; }
     return { dx, dy, rad };
   }
 
   function applyPos(dx, dy, rad) {
     const maxPx = rad * MAX_R * 2;
-    const pct   = rad > 0 ? Math.min(Math.hypot(dx,dy) / rad, 1.0) : 0;
     const kx    = (dx / rad) * maxPx;
     const ky    = (dy / rad) * maxPx;
     knob.classList.remove('idle');
     knob.style.left = `calc(50% + ${kx}px)`;
     knob.style.top  = `calc(50% + ${ky}px)`;
 
-    const ndx = rad > 0 ? dx / rad : 0;
-    const ndy = rad > 0 ? dy / rad : 0;
-    curDirX = Math.abs(ndx) > DEAD ? ndx : 0;
-    curDirY = Math.abs(ndy) > DEAD ? ndy : 0;
+    const nx  = rad > 0 ? dx / rad : 0;
+    const ny  = rad > 0 ? dy / rad : 0;
+    const mag = Math.hypot(nx, ny);
 
-    let arrow = '';
-    if (curDirY < -DEAD) arrow += 'U';
-    if (curDirY >  DEAD) arrow += 'D';
-    if (curDirX < -DEAD) arrow = (arrow + 'L').split('').sort().join('');
-    if (curDirX >  DEAD) arrow = (arrow + 'R');
-    dirEl.textContent = DIR_ARROWS[arrow] ?? '●';
+    if (mag < DEAD) {
+      curX = curY = 0;
+      dirEl.textContent  = '●';
+      dirEl.style.transform = '';
+    } else {
+      const scale = (mag - DEAD) / (1 - DEAD);
+      curX = (nx / mag) * scale;
+      curY = (ny / mag) * scale;
+      const angle = Math.atan2(ny, nx) * 180 / Math.PI;
+      dirEl.style.transform = `rotate(${angle + 90}deg)`;
+      dirEl.textContent = '▲';
+    }
   }
 
   function resetKnob() {
     knob.classList.add('idle');
-    knob.style.left = '50%';
-    knob.style.top  = '50%';
-    curDirX = curDirY = 0;
+    knob.style.left = '50%'; knob.style.top = '50%';
+    curX = curY = 0;
+    dirEl.style.transform = '';
     dirEl.textContent = '●';
   }
 
   function startJoy(ev) {
-    ev.preventDefault();
-    active = true;
+    ev.preventDefault(); active = true;
     const { dx, dy, rad } = getPos(ev);
     applyPos(dx, dy, rad);
-
     clearInterval(joyTimer);
     joyTimer = setInterval(() => {
       if (!active) return;
-      let dirStr = '';
-      const TX = 0.25, TY = 0.25;
-      if (curDirY < -TY) dirStr += 'U';
-      if (curDirY >  TY) dirStr += 'D';
-      if (curDirX < -TX) dirStr += 'L';
-      if (curDirX >  TX) dirStr += 'R';
-      if (dirStr) send(`ACTION:${dirStr}`);
+      if (Math.hypot(curX, curY) > 0.05)
+        send(`ACTION:x=${curX.toFixed(3)},y=${curY.toFixed(3)}`);
     }, 50);
   }
 
@@ -466,9 +498,7 @@ function sendAction(dir) { send(`ACTION:${dir}`); }
 
   function endJoy(ev) {
     if (ev) ev.preventDefault();
-    active = false;
-    clearInterval(joyTimer);
-    resetKnob();
+    active = false; clearInterval(joyTimer); resetKnob();
   }
 
   outer.addEventListener('touchstart',  startJoy, { passive: false });
@@ -480,10 +510,10 @@ function sendAction(dir) { send(`ACTION:${dir}`); }
   document.addEventListener('mouseup',   ev => { if (active) endJoy(ev); });
 })();
 
+
 function updateUI(state) {
-  const phase   = state.phase ?? 0;
+  const phase   = state.phase   ?? 0;
   const players = state.players ?? [];
-  const votes   = state.votes   ?? [-1,-1,-1,-1];
   const pg      = state.pong    ?? {};
 
   const banner = document.getElementById('phase-banner');
@@ -493,8 +523,7 @@ function updateUI(state) {
   const me = players.find(p => p.id === myId);
   if (me) {
     document.getElementById('disp-score').textContent = me.score;
-    document.getElementById('color-dot').style.background =
-      COLOR_CSS[me.color] ?? '#888';
+    document.getElementById('color-dot').style.background = COLOR_CSS[me.color] ?? '#888';
     myTeam = me.team ?? -1;
   }
 
@@ -503,16 +532,21 @@ function updateUI(state) {
   if (phase === PHASE.LOBBY) {
     const cnt = players.length;
     document.getElementById('lobby-info').textContent =
-      cnt >= 2 ? `Graczy gotowych: ${cnt}/4 – możesz startować!`
-               : `Graczy: ${cnt}/4 – potrzeba min. 2…`;
+      cnt >= 2 ? `${cnt}/4 players ready – you can start!`
+               : `${cnt}/4 players – need at least 2…`;
     document.getElementById('btn-start').disabled = cnt < 2;
+    // show PIN
+    if (state.pin) {
+      myRoomPin = state.pin;
+      document.getElementById('lobby-pin-code').textContent = state.pin;
+    }
     myVote = null;
     document.getElementById('voted-label').style.display = 'none';
     document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
   }
 
   if (phase === PHASE.VOTING) {
-    const vl = state.vote_left ?? 10;
+    const vl  = state.vote_left ?? 10;
     const tel = document.getElementById('vote-timer');
     tel.textContent = `${vl}s`;
     tel.className   = 'vote-timer' + (vl <= 3 ? ' urgent' : '');
@@ -530,14 +564,12 @@ function updateUI(state) {
   }
 
   const bot = document.getElementById('game-bottom');
-  if (phase === PHASE.COINS)
-    bot.textContent = `Pozostało: ${state.time_left}s`;
-  else if (phase === PHASE.PONG)
-    bot.textContent = `Drużyna 0: ${pg.s0 ?? 0}  –  Drużyna 1: ${pg.s1 ?? 0}  (do 3)`;
+  if      (phase === PHASE.COINS) bot.textContent = `Time left: ${state.time_left}s`;
+  else if (phase === PHASE.PONG)  bot.textContent = `Team 0: ${pg.s0??0}  –  Team 1: ${pg.s1??0}  (first to 3)`;
   else if (phase === PHASE.ENDED) {
-    const sorted = [...players].sort((a,b) => b.score-a.score);
+    const sorted = [...players].sort((a,b) => b.score - a.score);
     const w = sorted[0];
-    bot.textContent = w ? `🏆 ${w.name} wygrywa!` : '';
+    bot.textContent = w ? `🏆 ${w.name} wins!` : '';
   } else bot.textContent = '';
 }
 
@@ -547,10 +579,8 @@ function showPanel(phase) {
   const pJoy   = document.getElementById('panel-joystick');
   const pDpad  = document.getElementById('panel-dpad');
 
-  pLobby.style.display = 'none';
-  pVote.style.display  = 'none';
-  pJoy.style.display   = 'none';
-  pDpad.style.display  = 'none';
+  pLobby.style.display = pVote.style.display =
+  pJoy.style.display   = pDpad.style.display = 'none';
 
   if      (phase === PHASE.LOBBY)  pLobby.style.display = 'flex';
   else if (phase === PHASE.VOTING) pVote.style.display  = 'flex';
@@ -559,6 +589,7 @@ function showPanel(phase) {
   else if (phase === PHASE.BOMB)   pJoy.style.display   = 'flex';
   else if (phase === PHASE.ENDED)  pLobby.style.display = 'flex';
 }
+
 
 let pingTimer;
 function startPing() {
@@ -571,21 +602,28 @@ function send(msg) {
 }
 function setStatus(txt, type) {
   const el = document.getElementById('status');
-  el.textContent = txt; el.className = type;
+  el.textContent = txt; el.className = type ?? 'dim';
+}
+function setRoomStatus(txt, type) {
+  const el = document.getElementById('room-status');
+  el.textContent = txt; el.className = type ?? 'dim';
 }
 
+// keyboard for dpad + name field
 const KMAP = { ArrowUp:'U', ArrowDown:'D', ArrowLeft:'L', ArrowRight:'R' };
 document.addEventListener('keydown', e => {
   const d = KMAP[e.key];
   if (d) { e.preventDefault(); press(d); }
 });
-document.addEventListener('keyup', e => {
-  const d = KMAP[e.key]; if (d) release(d);
+document.addEventListener('keyup', e => { const d = KMAP[e.key]; if (d) release(d); });
+document.getElementById('player-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') goToRoom();
 });
-document.getElementById('player-name')
-  .addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
+document.getElementById('room-pin-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') joinRoom();
+});
 
-document.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
 connectWS();
 </script>

@@ -9,7 +9,7 @@
 #include <time.h>
 #include <math.h>
 
-#define PORT               5000
+#define PORT_DEFAULT       5000
 #define MAX_CLIENTS        10
 #define MAX_PLAYERS        4
 #define MAX_COINS          6
@@ -243,7 +243,7 @@ static void pong_tick(void) {
 
 static void bomb_init(void) {
     bomb.exploded  = 0;
-    bomb.time_left = BOMB_DURATION;
+    bomb.time_left = 15 + rand() % 16;
     bomb.hold_ticks = 0;
     /* pick random starting holder */
     int cnt = 0, ids[MAX_PLAYERS];
@@ -446,6 +446,18 @@ static void check_coins(int pid) {
     }
 }
 
+static void apply_action_analog(int pid, float ax, float ay) {
+    if (!players[pid].active) return;
+    if (ax >  1.0f) ax =  1.0f;
+    if (ax < -1.0f) ax = -1.0f;
+    if (ay >  1.0f) ay =  1.0f;
+    if (ay < -1.0f) ay = -1.0f;
+    players[pid].x += ax * PLAYER_SPEED;
+    players[pid].y += ay * PLAYER_SPEED;
+    clamp_player(pid);
+    check_coins(pid);
+}
+
 static void apply_action(int pid, const char *dir) {
     if (!players[pid].active) return;
     float spd = PLAYER_SPEED;
@@ -453,14 +465,11 @@ static void apply_action(int pid, const char *dir) {
     int right = (strchr(dir,'R') != NULL);
     int up    = (strchr(dir,'U') != NULL);
     int down  = (strchr(dir,'D') != NULL);
-
     float norm = (left+right > 0 && up+down > 0) ? 0.7071f : 1.0f;
-
     if (left)  players[pid].x -= spd * norm;
     if (right) players[pid].x += spd * norm;
     if (up)    players[pid].y -= spd * norm;
     if (down)  players[pid].y += spd * norm;
-
     clamp_player(pid);
     check_coins(pid);
 }
@@ -543,18 +552,24 @@ static void *connection_handler(void *arg) {
                 if (pid < 0 || !players[pid].active) goto done;
                 players[pid].last_ping = time(NULL);
 
-                if (phase == PHASE_COINS) {
-                    apply_action(pid, line + 7);
+                const char *payload = line + 7;
+
+                if (phase == PHASE_COINS || phase == PHASE_BOMB) {
+                    if (strncmp(payload, "x=", 2) == 0) {
+                        float ax = 0, ay = 0;
+                        sscanf(payload, "x=%f,y=%f", &ax, &ay);
+                        apply_action_analog(pid, ax, ay);
+                    } else {
+                        apply_action(pid, payload);
+                    }
                 } else if (phase == PHASE_PONG && pong.winner < 0) {
-                    int team   = players[pid].team;
-                    float *py  = (team == 0) ? &pong.py0 : &pong.py1;
+                    int team  = players[pid].team;
+                    float *py = (team == 0) ? &pong.py0 : &pong.py1;
                     float half = PONG_PAD_H / 2.0f;
-                    if (strchr(line+7,'U')) *py -= PONG_PAD_SPEED;
-                    if (strchr(line+7,'D')) *py += PONG_PAD_SPEED;
+                    if (strchr(payload,'U')) *py -= PONG_PAD_SPEED;
+                    if (strchr(payload,'D')) *py += PONG_PAD_SPEED;
                     if (*py - half < 0)      *py = half;
                     if (*py + half > PONG_H) *py = PONG_H - half;
-                } else if (phase == PHASE_BOMB && !bomb.exploded) {
-                    apply_action(pid, line + 7);
                 }
 
             } else if (strcmp(line, "PING") == 0) {
@@ -589,7 +604,8 @@ static void *connection_handler(void *arg) {
     return NULL;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    int port = (argc > 1) ? atoi(argv[1]) : PORT_DEFAULT;
     int listenfd; struct sockaddr_in serv_addr; pthread_t tid;
     memset(clients, 0, sizeof(clients));
     memset(players, 0, sizeof(players));
@@ -602,12 +618,12 @@ int main(void) {
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family      = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv_addr.sin_port        = htons(PORT);
+    serv_addr.sin_port        = htons(port);
     if (bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
         perror("bind"); return 1;
     }
     listen(listenfd, 10);
-    fprintf(stderr, "[SERVER] Port %d\n", PORT);
+    fprintf(stderr, "[SERVER] Listening on port %d\n", port);
 
     pthread_create(&tid, NULL, game_loop, NULL);
     pthread_detach(tid);

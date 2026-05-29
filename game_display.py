@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
+game_display.py  –  Party Game display entry point.
 
-Logika podzielona jest na pakiet display/:
-    display/constants.py    – stałe kolorów i rozmiarów
-    display/fonts.py        – zestaw czcionek Pygame
-    display/network.py      – klient TCP (odbiera stan z serwera C)
-    display/renderers.py    – klasy rysujące poszczególne ekrany
-    display/game_display.py – główna klasa GameDisplay
-
-Fazy: 0=LOBBY  1=VOTING  2=COINS  3=PONG  4=ENDED
+Usage:
+    python3 game_display.py              # shows PIN input screen
+    python3 game_display.py --pin 1234   # connects directly to room 1234
 """
-
+import argparse
 from display.game_display import GameDisplay
 
 SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 5000
 
 if __name__ == '__main__':
-    print(f'[DISPLAY] Łączenie z {SERVER_HOST}:{SERVER_PORT}…')
-    GameDisplay(SERVER_HOST, SERVER_PORT).run()
+    parser = argparse.ArgumentParser(description='Party Game Display')
+    parser.add_argument('--pin', default=None, help='4-digit room PIN')
+    args = parser.parse_args()
+
+    GameDisplay(SERVER_HOST, SERVER_PORT, pin=args.pin).run()

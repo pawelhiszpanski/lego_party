@@ -49,5 +49,5 @@ PLAYER_RGB: dict[str, tuple[int, int, int]] = {
 
 PLAYER_R = 22
 
-PHASE_LBL = ['LOBBY', 'GŁOSOWANIE', 'ZBIERANIE MONET', 'PONG', 'KONIEC', 'HOT POTATO']
+PHASE_LBL = ['LOBBY', 'VOTING', 'COINS', 'PONG', 'GAME OVER', 'HOT POTATO']
 PHASE_COL = [C['gold'], C['vote_c'], C['green'], C['vote_b'], C['red'], (220, 100, 20)]
