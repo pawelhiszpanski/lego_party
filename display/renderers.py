@@ -281,30 +281,60 @@ class LobbyRenderer:
         # drifting star particles
         for sx, sy, spd, phase in self._stars:
             alpha = int(30 + 25 * math.sin(self._tick * spd * 0.04 + phase))
-            r     = 2
+            r = 2
             s = pygame.Surface((r*2+2, r*2+2), pygame.SRCALPHA)
             pygame.draw.circle(s, (150, 150, 220, alpha), (r+1, r+1), r)
             self.screen.blit(s, (sx - r - 1, sy - r - 1))
 
         players = state.get('players', [])
         cnt     = len(players)
+        pin     = state.get('pin', '')
 
-        lbl1 = self.fonts.lg.render('LOBBY', True, C['gold'])
-        lbl2 = self.fonts.md.render(f'Players: {cnt} / 4', True, C['white'])
-        lbl3 = (
-            self.fonts.sm.render('Press  START GAME  on your phone', True, C['green'])
-            if cnt >= 2 else
-            self.fonts.sm.render('Need at least 2 players...', True, C['dim'])
-        )
+        # ── PIN card ───────────────────────────────────────────────────────
+        card_w, card_h = 480, 200
+        card_x = ARENA_W // 2 - card_w // 2
+        card_y = ARENA_H // 2 - 130
 
-        self.screen.blit(lbl1, (ARENA_W//2 - lbl1.get_width()//2, ARENA_H//2 - 70))
-        self.screen.blit(lbl2, (ARENA_W//2 - lbl2.get_width()//2, ARENA_H//2 - 15))
-        self.screen.blit(lbl3, (ARENA_W//2 - lbl3.get_width()//2, ARENA_H//2 + 24))
+        card = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+        card.fill((0, 0, 0, 160))
+        self.screen.blit(card, (card_x, card_y))
+        pygame.draw.rect(self.screen, C['gold'],
+                         (card_x, card_y, card_w, card_h), 2, border_radius=16)
 
-        y0 = ARENA_H//2 + 68
+        # how-to line
+        url_s = self.fonts.sm.render('Open the URL shown in the terminal  ·  enter your name and PIN:',
+                                     True, (180, 180, 180))
+        self.screen.blit(url_s, (ARENA_W//2 - url_s.get_width()//2, card_y + 14))
+
+        # large PIN
+        pin_display = pin if pin else '----'
+        spaced = '  '.join(pin_display)       # e.g. "4  8  2  1"
+        pin_s  = self.fonts.xl.render(spaced, True, C['gold'])
+        # pulsing scale effect
+        pulse = 1.0 + 0.04 * math.sin(self._tick * 0.08)
+        pw    = int(pin_s.get_width()  * pulse)
+        ph    = int(pin_s.get_height() * pulse)
+        pin_scaled = pygame.transform.smoothscale(pin_s, (pw, ph))
+        self.screen.blit(pin_scaled,
+                         (ARENA_W//2 - pw//2, card_y + 50))
+
+        # label below PIN
+        lbl = self.fonts.sm.render('ROOM PIN', True, C['dim'])
+        self.screen.blit(lbl, (ARENA_W//2 - lbl.get_width()//2, card_y + 150))
+
+        # player count / start hint
+        cnt_col = C['green'] if cnt >= 2 else C['dim']
+        info_txt = (f'Players: {cnt}/4  –  Start from any phone!'
+                    if cnt >= 2 else
+                    f'Players: {cnt}/4  –  need at least 2…')
+        info_s = self.fonts.sm.render(info_txt, True, cnt_col)
+        self.screen.blit(info_s, (ARENA_W//2 - info_s.get_width()//2, card_y + 180))
+
+        # player list
+        y0 = card_y + card_h + 18
         for p in players:
-            col = PLAYER_RGB.get(p.get('color','red'), C['white'])
-            ns  = self.fonts.sm.render(f"* {p.get('name','?')}", True, col)
+            col = PLAYER_RGB.get(p.get('color', 'red'), C['white'])
+            ns  = self.fonts.sm.render(f"● {p.get('name', '?')}", True, col)
             self.screen.blit(ns, (ARENA_W//2 - ns.get_width()//2, y0))
             y0 += 26
 

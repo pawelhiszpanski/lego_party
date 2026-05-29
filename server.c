@@ -91,6 +91,8 @@ static int       last_game  = 0;
 
 static time_t    g_last_second = 0;
 
+static char      g_pin[8]     = "0000";
+
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static const int   START_X[MAX_PLAYERS] = { 80, 720,  80, 720 };
@@ -153,10 +155,12 @@ static void build_json(char *buf, int sz) {
         "],\"pong\":{\"bx\":%.1f,\"by\":%.1f,"
         "\"py0\":%.1f,\"py1\":%.1f,"
         "\"s0\":%d,\"s1\":%d,\"win\":%d,\"spd\":%.1f},"
-        "\"bomb\":{\"holder\":%d,\"time_left\":%d,\"exploded\":%d}}",
+        "\"bomb\":{\"holder\":%d,\"time_left\":%d,\"exploded\":%d},"
+        "\"pin\":\"%s\"}",
         pong.bx, pong.by, pong.py0, pong.py1,
         pong.score0, pong.score1, pong.winner, pong.speed,
-        bomb.holder, bomb.time_left, bomb.exploded);
+        bomb.holder, bomb.time_left, bomb.exploded,
+        g_pin);
 }
 
 static void pong_reset_ball(int dir) {
@@ -495,15 +499,30 @@ static void *connection_handler(void *arg) {
 
             if (strncmp(line, "JOIN:", 5) == 0) {
                 if (phase != PHASE_LOBBY) {
-                    write(sock, "ERROR:Gra w toku\n", 17);
+                    write(sock, "ERROR:Game already started\n", 27);
                 } else {
+                    /* Accept both JOIN:Name and JOIN:PIN:Name */
+                    char *nameptr = line + 5;
+                    char *colon  = strchr(nameptr, ':');
+                    if (colon) {
+                        /* JOIN:PIN:Name – verify PIN */
+                        char provided_pin[8] = {0};
+                        int plen = (int)(colon - nameptr);
+                        if (plen > 7) plen = 7;
+                        strncpy(provided_pin, nameptr, plen);
+                        if (strcmp(provided_pin, g_pin) != 0) {
+                            write(sock, "ERROR:Wrong PIN\n", 16);
+                            goto done;
+                        }
+                        nameptr = colon + 1;
+                    }
                     int pid = -1;
                     for (int i = 0; i < MAX_PLAYERS; i++)
                         if (!players[i].active) { pid = i; break; }
                     if (pid < 0) {
-                        write(sock, "ERROR:Brak miejsca\n", 19);
+                        write(sock, "ERROR:Room full\n", 16);
                     } else {
-                        strncpy(players[pid].name, line+5, 31);
+                        strncpy(players[pid].name, nameptr, 31);
                         players[pid].name[31]   = '\0';
                         players[pid].x          = START_X[pid];
                         players[pid].y          = START_Y[pid];
@@ -535,7 +554,7 @@ static void *connection_handler(void *arg) {
                             players[i].vote = -1;
                         fprintf(stderr, "[VOTE] Start\n");
                     } else {
-                        write(sock, "ERROR:Za malo graczy\n", 21);
+                        write(sock, "ERROR:Need at least 2 players\n", 30);
                     }
                 }
 
@@ -606,6 +625,10 @@ static void *connection_handler(void *arg) {
 
 int main(int argc, char *argv[]) {
     int port = (argc > 1) ? atoi(argv[1]) : PORT_DEFAULT;
+
+    srand((unsigned)time(NULL));
+    snprintf(g_pin, sizeof(g_pin), "%04d", 1000 + rand() % 9000);
+
     int listenfd; struct sockaddr_in serv_addr; pthread_t tid;
     memset(clients, 0, sizeof(clients));
     memset(players, 0, sizeof(players));
@@ -623,7 +646,8 @@ int main(int argc, char *argv[]) {
         perror("bind"); return 1;
     }
     listen(listenfd, 10);
-    fprintf(stderr, "[SERVER] Listening on port %d\n", port);
+    fprintf(stderr, "[SERVER] Listening on port %d  PIN: %s\n", port, g_pin);
+
 
     pthread_create(&tid, NULL, game_loop, NULL);
     pthread_detach(tid);

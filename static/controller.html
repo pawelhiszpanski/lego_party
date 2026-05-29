@@ -196,33 +196,18 @@
 </head>
 <body>
 
+<!-- ── Screen 1: Name + PIN entry ──────────────────────────────────────── -->
 <div id="screen-join" class="screen active">
   <div class="logo">🎮</div>
   <div class="title">PARTY GAME</div>
-  <div class="sub">Enter your name to get started</div>
+  <div class="sub">Enter your name and the PIN shown on the TV/display</div>
   <input type="text" id="player-name" placeholder="Your name…"
          maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false">
-  <button class="btn btn-next" onclick="goToRoom()">NEXT →</button>
+  <input type="text" id="room-pin-input" placeholder="Room PIN (4 digits)…"
+         maxlength="4" inputmode="numeric" pattern="[0-9]{4}"
+         autocomplete="off" autocorrect="off" spellcheck="false">
+  <button class="btn btn-next" id="btn-join" onclick="joinGame()">JOIN GAME</button>
   <div id="status" class="dim">Connecting to server…</div>
-</div>
-
-<div id="screen-room" class="screen">
-  <div class="logo">🚪</div>
-  <div class="title">PARTY GAME</div>
-  <div id="room-player-badge" class="player-bar" style="justify-content:center">
-    <span class="pname" id="room-player-name" style="text-align:center;flex:none"></span>
-  </div>
-
-  <button class="btn btn-create" onclick="createRoom()">✦ CREATE NEW ROOM</button>
-
-  <div class="divider">─── or join existing ───</div>
-
-  <div class="join-row">
-    <input type="number" id="room-pin-input" placeholder="PIN…" maxlength="4" min="1000" max="9999">
-    <button class="btn btn-join-r" onclick="joinRoom()">JOIN</button>
-  </div>
-
-  <div id="room-status" class="dim" style="font-size:.9rem;text-align:center"></div>
 </div>
 
 <div id="screen-game" class="screen">
@@ -352,41 +337,29 @@ function handleMsg(msg) {
   } else if (msg.startsWith('ERROR:')) {
     const errTxt = msg.slice(6);
     setStatus('⚠️ ' + errTxt, 'err');
-    setRoomStatus('⚠️ ' + errTxt, 'err');
   } else if (msg === 'PONG') {
     /* heartbeat reply */
   }
 }
 
+// ── Navigation ────────────────────────────────────────────────────────────────
 
-function goToRoom() {
-  const n = document.getElementById('player-name').value.trim();
-  if (!n) { setStatus('Please enter your name!', 'err'); return; }
-  if (!wsOk) { setStatus('Not connected – please wait…', 'err'); return; }
-  myName = n;
-  document.getElementById('room-player-name').textContent = '👤 ' + myName;
-  document.getElementById('screen-join').classList.remove('active');
-  document.getElementById('screen-room').classList.add('active');
-  setRoomStatus('');
-}
-
-function createRoom() {
-  if (!wsOk) { setRoomStatus('Not connected', 'err'); return; }
-  setRoomStatus('Creating room…', 'dim');
-  send(`CREATE:${myName}`);
-}
-
-function joinRoom() {
+function joinGame() {
+  const n   = document.getElementById('player-name').value.trim();
   const pin = document.getElementById('room-pin-input').value.trim();
-  if (pin.length !== 4 || isNaN(pin)) { setRoomStatus('Enter a 4-digit PIN', 'err'); return; }
-  if (!wsOk) { setRoomStatus('Not connected', 'err'); return; }
-  setRoomStatus('Joining…', 'dim');
-  send(`JOIN:${pin}:${myName}`);
+  if (!n)                       { setStatus('Please enter your name!', 'err'); return; }
+  if (pin.length !== 4 || isNaN(Number(pin))) { setStatus('Enter the 4-digit PIN shown on screen', 'err'); return; }
+  if (!wsOk)                    { setStatus('Not connected – please wait…', 'err'); return; }
+  myName    = n;
+  myRoomPin = pin;
+  setStatus('Joining…', 'dim');
+  send(`JOIN:${pin}:${n}`);
 }
+
+
 
 function showGame() {
   document.getElementById('screen-join').classList.remove('active');
-  document.getElementById('screen-room').classList.remove('active');
   document.getElementById('screen-game').classList.add('active');
   document.getElementById('disp-name').textContent = myName;
   document.getElementById('lobby-pin-code').textContent = myRoomPin || '----';
@@ -605,8 +578,7 @@ function setStatus(txt, type) {
   el.textContent = txt; el.className = type ?? 'dim';
 }
 function setRoomStatus(txt, type) {
-  const el = document.getElementById('room-status');
-  el.textContent = txt; el.className = type ?? 'dim';
+  /* room-status element removed but keep stub to avoid reference errors */
 }
 
 // keyboard for dpad + name field
@@ -617,10 +589,10 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => { const d = KMAP[e.key]; if (d) release(d); });
 document.getElementById('player-name').addEventListener('keydown', e => {
-  if (e.key === 'Enter') goToRoom();
+  if (e.key === 'Enter') joinGame();
 });
 document.getElementById('room-pin-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') joinRoom();
+  if (e.key === 'Enter') joinGame();
 });
 
 document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });

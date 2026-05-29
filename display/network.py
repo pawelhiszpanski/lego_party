@@ -17,10 +17,9 @@ class NetworkClient:
         'pin': '',
     }
 
-    def __init__(self, host: str, port: int, pin: str = '') -> None:
+    def __init__(self, host: str, port: int = 6000) -> None:
         self.host      = host
         self.port      = port
-        self.pin       = pin
         self.state     = dict(self.DEFAULT_STATE)
         self.lock      = threading.Lock()
         self.connected = False
@@ -37,12 +36,14 @@ class NetworkClient:
             try:
                 s = socket.socket()
                 s.connect((self.host, self.port))
-                s.send(f'DISPLAY:{self.pin}\n'.encode())
+                # Identify as display client
+                s.send(b'DISPLAY\n')
                 self.connected = True
                 buf = b''
                 while True:
                     data = s.recv(8192)
-                    if not data: break
+                    if not data:
+                        break
                     buf += data
                     while b'\n' in buf:
                         line, buf = buf.split(b'\n', 1)
