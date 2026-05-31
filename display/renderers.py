@@ -256,16 +256,14 @@ class VotingRenderer:
 
 
 class LobbyRenderer:
-    _N_STARS = 40
+    _N_STARS = 140
 
     def __init__(self, screen: pygame.Surface, fonts: Fonts,
-                 arena: ArenaRenderer, player_r: PlayerRenderer,
-                 base_url: str = '') -> None:
+                 arena: ArenaRenderer, player_r: PlayerRenderer) -> None:
         self.screen   = screen
         self.fonts    = fonts
         self.arena    = arena
         self.player_r = player_r
-        self.base_url = base_url   # e.g. "http://192.168.0.x:8080"
         self._tick    = 0
         self._qr_surf: pygame.Surface | None = None
         self._qr_pin: str = ''
@@ -277,10 +275,11 @@ class LobbyRenderer:
             for _ in range(self._N_STARS)
         ]
 
-    def _make_qr(self, pin: str) -> pygame.Surface:
-        """Generate a QR-code pygame Surface for the given PIN."""
+    def _make_qr(self, pin: str, ip_from_server: str) -> pygame.Surface:
+        """Generuje kod QR na podstawie adresu IP dostarczonego bezpośrednio z serwera."""
         import qrcode, io
-        url = f'{self.base_url}/?pin={pin}' if self.base_url else pin
+        # Jeśli serwer przekazał nam IP, budujemy pełny link, w przeciwnym wypadku sam PIN
+        url = f'http://{ip_from_server}:8080/?pin={pin}' if ip_from_server else f'http://localhost:8080/?pin={pin}'
         qr  = qrcode.QRCode(box_size=6, border=2,
                              error_correction=qrcode.constants.ERROR_CORRECT_M)
         qr.add_data(url)
@@ -307,11 +306,14 @@ class LobbyRenderer:
         cnt     = len(players)
         pin     = state.get('pin', '')
 
+        server_ip = state.get('server_ip', '127.0.0.1') 
+
         # regenerate QR only when pin changes
         if pin and pin != self._qr_pin:
             try:
-                self._qr_surf = self._make_qr(pin)
-            except Exception:
+                self._qr_surf = self._make_qr(pin, server_ip)
+            except Exception as e:
+                print(f"[QR ERROR] Coś poszło nie tak: {e}")
                 self._qr_surf = None
             self._qr_pin = pin
 
@@ -371,7 +373,7 @@ class LobbyRenderer:
         lbl = self.fonts.xs.render('ROOM PIN', True, C['dim'])
         self.screen.blit(lbl, (card_x + card_w//2 - lbl.get_width()//2, card_y + 130))
 
-        url_hint = self.base_url if self.base_url else 'see terminal for URL'
+        url_hint = f'http://{server_ip}:8080' if server_ip != '127.0.0.1' else 'see terminal for URL'
         url_s = self.fonts.xs.render(url_hint, True, (140, 140, 160))
         self.screen.blit(url_s, (card_x + card_w//2 - url_s.get_width()//2, card_y + 150))
 

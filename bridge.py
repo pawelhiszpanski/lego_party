@@ -29,6 +29,18 @@ SERVER_BIN   = os.path.join(os.path.dirname(__file__), 'game_server')
 app  = Flask(__name__)
 sock = Sock(app)
 
+def _get_local_ip() -> str:
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(('8.8.8.8', 80))
+        ip = probe.getsockname()[0]
+        probe.close()
+        return ip
+    except OSError:
+        return '127.0.0.1'
+
+LOCAL_IP = _get_local_ip()
+
 # ── C-server management ───────────────────────────────────────────────────────
 
 _server_proc: subprocess.Popen | None = None
@@ -185,13 +197,25 @@ def _handle_display(conn: socket.socket) -> None:
     """
     game_display.py connects here (DISPLAY_PORT) and sends 'DISPLAY\n'.
     We open a fresh TCP connection to the C server, register it as DISPLAY,
-    then relay bytes bidirectionally.
+    then relay bytes bidirectionally, INJECTING the server IP into the STATE.
     """
     srv: socket.socket | None = None
     try:
         srv = _connect_to_server()
         srv.sendall(b'DISPLAY\n')   # register as display with C server
-        t = threading.Thread(target=_pipe, args=(srv, conn), daemon=True)
+        
+        # Nowa funkcja w locie doklejająca IP do JSONA
+        def _display_forward(src, dst):
+            for line in _recv_lines(src):
+                # Jeśli to jest paczka ze stanem gry, wklejamy nasz LOCAL_IP na sam koniec
+                if line.startswith('STATE:{') and line.endswith('}'):
+                    line = line[:-1] + f',"server_ip":"{LOCAL_IP}"}}'
+                try:
+                    dst.sendall((line + '\n').encode('utf-8'))
+                except OSError:
+                    break
+
+        t = threading.Thread(target=_display_forward, args=(srv, conn), daemon=True)
         t.start()
         _pipe(conn, srv)
     except Exception as e:

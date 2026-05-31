@@ -36,7 +36,7 @@ class GameDisplay:
 
         self._fonts = Fonts()
 
-        base_url = f'http://{_local_ip()}:8080'
+        # base_url = f'http://{_local_ip()}:8080'
 
         self.net = NetworkClient(SERVER_HOST, SERVER_PORT)
         self.net.start()
@@ -48,7 +48,7 @@ class GameDisplay:
         self.pong_r   = PongRenderer(self.screen, self._fonts)
         self.voting_r = VotingRenderer(self.screen, self._fonts)
         self.lobby_r  = LobbyRenderer(self.screen, self._fonts,
-                                      arena_r, player_r, base_url)
+                                      arena_r, player_r)
         self.bomb_r   = BombRenderer(self.screen, self._fonts, arena_r, player_r)
         self.panel_r  = PanelRenderer(self.screen, self._fonts,
                                       lambda: self.net.connected)
