@@ -259,13 +259,16 @@ class LobbyRenderer:
     _N_STARS = 40
 
     def __init__(self, screen: pygame.Surface, fonts: Fonts,
-                 arena: ArenaRenderer, player_r: PlayerRenderer) -> None:
+                 arena: ArenaRenderer, player_r: PlayerRenderer,
+                 base_url: str = '') -> None:
         self.screen   = screen
         self.fonts    = fonts
         self.arena    = arena
         self.player_r = player_r
+        self.base_url = base_url   # e.g. "http://192.168.0.x:8080"
         self._tick    = 0
-        # static star positions
+        self._qr_surf: pygame.Surface | None = None
+        self._qr_pin: str = ''
         import random
         rng = random.Random(42)
         self._stars = [
@@ -273,6 +276,20 @@ class LobbyRenderer:
              rng.uniform(0.4, 1.0), rng.uniform(0, math.tau))
             for _ in range(self._N_STARS)
         ]
+
+    def _make_qr(self, pin: str) -> pygame.Surface:
+        """Generate a QR-code pygame Surface for the given PIN."""
+        import qrcode, io
+        url = f'{self.base_url}/?pin={pin}' if self.base_url else pin
+        qr  = qrcode.QRCode(box_size=6, border=2,
+                             error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='white', back_color=(22, 22, 34))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        return pygame.image.load(buf, 'qr.png').convert()
 
     def draw(self, state: dict) -> None:
         self._tick += 1
@@ -290,48 +307,83 @@ class LobbyRenderer:
         cnt     = len(players)
         pin     = state.get('pin', '')
 
-        # ── PIN card ───────────────────────────────────────────────────────
-        card_w, card_h = 480, 200
-        card_x = ARENA_W // 2 - card_w // 2
-        card_y = ARENA_H // 2 - 130
+        # regenerate QR only when pin changes
+        if pin and pin != self._qr_pin:
+            try:
+                self._qr_surf = self._make_qr(pin)
+            except Exception:
+                self._qr_surf = None
+            self._qr_pin = pin
+
+        # ── layout: QR on left, PIN card on right ─────────────────────────
+        total_w  = 560
+        start_x  = ARENA_W // 2 - total_w // 2
+        card_y   = ARENA_H // 2 - 120
+        card_h   = 188
+
+        # ── left: QR code ─────────────────────────────────────────────────
+        qr_size = 156
+        qr_x    = start_x
+        qr_y    = card_y + (card_h - qr_size) // 2
+
+        if self._qr_surf:
+            qr_scaled = pygame.transform.smoothscale(self._qr_surf, (qr_size, qr_size))
+            # white border / frame
+            frame = pygame.Surface((qr_size + 10, qr_size + 10))
+            frame.fill((240, 240, 240))
+            self.screen.blit(frame, (qr_x - 5, qr_y - 5))
+            self.screen.blit(qr_scaled, (qr_x, qr_y))
+        else:
+            # fallback placeholder
+            pygame.draw.rect(self.screen, (60, 60, 80),
+                             (qr_x, qr_y, qr_size, qr_size), border_radius=8)
+            fb = self.fonts.sm.render('QR', True, C['dim'])
+            self.screen.blit(fb, (qr_x + qr_size//2 - fb.get_width()//2,
+                                  qr_y + qr_size//2 - fb.get_height()//2))
+
+        scan_s = self.fonts.xs.render('SCAN TO JOIN', True, (180, 180, 180))
+        self.screen.blit(scan_s, (qr_x + qr_size//2 - scan_s.get_width()//2,
+                                  qr_y + qr_size + 6))
+
+        # ── right: PIN card ────────────────────────────────────────────────
+        card_x  = qr_x + qr_size + 20
+        card_w  = total_w - qr_size - 20
 
         card = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
-        card.fill((0, 0, 0, 160))
+        card.fill((0, 0, 0, 165))
         self.screen.blit(card, (card_x, card_y))
         pygame.draw.rect(self.screen, C['gold'],
-                         (card_x, card_y, card_w, card_h), 2, border_radius=16)
+                         (card_x, card_y, card_w, card_h), 2, border_radius=14)
 
-        # how-to line
-        url_s = self.fonts.sm.render('Open the URL shown in the terminal  ·  enter your name and PIN:',
-                                     True, (180, 180, 180))
-        self.screen.blit(url_s, (ARENA_W//2 - url_s.get_width()//2, card_y + 14))
+        or_s = self.fonts.xs.render('OR ENTER MANUALLY', True, (160, 160, 160))
+        self.screen.blit(or_s, (card_x + card_w//2 - or_s.get_width()//2, card_y + 12))
 
-        # large PIN
+        # large PIN with pulse
         pin_display = pin if pin else '----'
-        spaced = '  '.join(pin_display)       # e.g. "4  8  2  1"
-        pin_s  = self.fonts.xl.render(spaced, True, C['gold'])
-        # pulsing scale effect
-        pulse = 1.0 + 0.04 * math.sin(self._tick * 0.08)
-        pw    = int(pin_s.get_width()  * pulse)
-        ph    = int(pin_s.get_height() * pulse)
-        pin_scaled = pygame.transform.smoothscale(pin_s, (pw, ph))
-        self.screen.blit(pin_scaled,
-                         (ARENA_W//2 - pw//2, card_y + 50))
+        spaced  = '  '.join(pin_display)
+        pin_s   = self.fonts.xl.render(spaced, True, C['gold'])
+        pulse   = 1.0 + 0.04 * math.sin(self._tick * 0.08)
+        pw      = int(pin_s.get_width()  * pulse)
+        ph      = int(pin_s.get_height() * pulse)
+        pin_sc  = pygame.transform.smoothscale(pin_s, (pw, ph))
+        self.screen.blit(pin_sc, (card_x + card_w//2 - pw//2, card_y + 42))
 
-        # label below PIN
-        lbl = self.fonts.sm.render('ROOM PIN', True, C['dim'])
-        self.screen.blit(lbl, (ARENA_W//2 - lbl.get_width()//2, card_y + 150))
+        lbl = self.fonts.xs.render('ROOM PIN', True, C['dim'])
+        self.screen.blit(lbl, (card_x + card_w//2 - lbl.get_width()//2, card_y + 130))
 
-        # player count / start hint
-        cnt_col = C['green'] if cnt >= 2 else C['dim']
+        url_hint = self.base_url if self.base_url else 'see terminal for URL'
+        url_s = self.fonts.xs.render(url_hint, True, (140, 140, 160))
+        self.screen.blit(url_s, (card_x + card_w//2 - url_s.get_width()//2, card_y + 150))
+
+        cnt_col  = C['green'] if cnt >= 2 else C['dim']
         info_txt = (f'Players: {cnt}/4  –  Start from any phone!'
-                    if cnt >= 2 else
-                    f'Players: {cnt}/4  –  need at least 2…')
-        info_s = self.fonts.sm.render(info_txt, True, cnt_col)
-        self.screen.blit(info_s, (ARENA_W//2 - info_s.get_width()//2, card_y + 180))
+                    if cnt >= 2 else f'Players: {cnt}/4  –  need at least 2…')
+        info_s = self.fonts.xs.render(info_txt, True, cnt_col)
+        self.screen.blit(info_s, (card_x + card_w//2 - info_s.get_width()//2,
+                                  card_y + card_h - 22))
 
-        # player list
-        y0 = card_y + card_h + 18
+        # ── player list below ──────────────────────────────────────────────
+        y0 = card_y + card_h + 16
         for p in players:
             col = PLAYER_RGB.get(p.get('color', 'red'), C['white'])
             ns  = self.fonts.sm.render(f"● {p.get('name', '?')}", True, col)

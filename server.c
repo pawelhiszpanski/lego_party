@@ -54,6 +54,7 @@ typedef struct {
 
 typedef struct {
     int    active;
+    int    disconnected;  /* 1 = was in game, can reconnect */
     char   name[32];
     float  x, y;
     int    score, color, team, vote;
@@ -516,28 +517,55 @@ static void *connection_handler(void *arg) {
                         }
                         nameptr = colon + 1;
                     }
+
+                    /* Reconnect: check if name matches a disconnected player */
                     int pid = -1;
-                    for (int i = 0; i < MAX_PLAYERS; i++)
-                        if (!players[i].active) { pid = i; break; }
-                    if (pid < 0) {
-                        write(sock, "ERROR:Room full\n", 16);
-                    } else {
-                        strncpy(players[pid].name, nameptr, 31);
-                        players[pid].name[31]   = '\0';
-                        players[pid].x          = START_X[pid];
-                        players[pid].y          = START_Y[pid];
-                        players[pid].score      = 0;
-                        players[pid].vote       = -1;
-                        players[pid].color      = next_color++ % 4;
-                        players[pid].active     = 1;
-                        players[pid].last_ping  = time(NULL);
-                        players[pid].client_idx = ci;
-                        clients[ci].player_id   = pid;
-                        char w[32];
-                        int wl = snprintf(w, sizeof(w), "WELCOME:%d\n", pid);
+                    for (int i = 0; i < MAX_PLAYERS; i++) {
+                        if (players[i].disconnected &&
+                            strncmp(players[i].name, nameptr, 31) == 0) {
+                            pid = i;
+                            break;
+                        }
+                    }
+                    if (pid >= 0) {
+                        /* restore the disconnected player */
+                        players[pid].active       = 1;
+                        players[pid].disconnected = 0;
+                        players[pid].last_ping    = time(NULL);
+                        players[pid].client_idx   = ci;
+                        clients[ci].player_id     = pid;
+                        char w[48];
+                        int wl = snprintf(w, sizeof(w), "RECONNECT:%d\n", pid);
                         write(sock, w, wl);
-                        fprintf(stderr, "[JOIN] Player %d: %s\n",
+                        fprintf(stderr, "[RECONNECT] Player %d: %s\n",
                                 pid, players[pid].name);
+                    } else {
+                        /* new player */
+                        pid = -1;
+                        for (int i = 0; i < MAX_PLAYERS; i++)
+                            if (!players[i].active && !players[i].disconnected)
+                                { pid = i; break; }
+                        if (pid < 0) {
+                            write(sock, "ERROR:Room full\n", 16);
+                        } else {
+                            strncpy(players[pid].name, nameptr, 31);
+                            players[pid].name[31]     = '\0';
+                            players[pid].x            = START_X[pid];
+                            players[pid].y            = START_Y[pid];
+                            players[pid].score        = 0;
+                            players[pid].vote         = -1;
+                            players[pid].color        = next_color++ % 4;
+                            players[pid].active       = 1;
+                            players[pid].disconnected = 0;
+                            players[pid].last_ping    = time(NULL);
+                            players[pid].client_idx   = ci;
+                            clients[ci].player_id     = pid;
+                            char w[32];
+                            int wl = snprintf(w, sizeof(w), "WELCOME:%d\n", pid);
+                            write(sock, w, wl);
+                            fprintf(stderr, "[JOIN] Player %d: %s\n",
+                                    pid, players[pid].name);
+                        }
                     }
                 }
 
@@ -614,8 +642,9 @@ static void *connection_handler(void *arg) {
     pthread_mutex_lock(&mutex);
     int pid = clients[ci].player_id;
     if (pid >= 0 && pid < MAX_PLAYERS) {
-        players[pid].active = 0;
-        fprintf(stderr, "[DISC] Player %d\n", pid);
+        players[pid].active       = 0;
+        players[pid].disconnected = 1;  /* keep name/score for reconnect */
+        fprintf(stderr, "[DISC] Player %d – may reconnect\n", pid);
     }
     clients[ci].active = 0; clients[ci].player_id = -1;
     pthread_mutex_unlock(&mutex);

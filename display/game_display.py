@@ -1,4 +1,5 @@
 import sys
+import socket
 import pygame
 
 from display.constants import WIN_W, WIN_H, FPS, ARENA_W, ARENA_H, C, PLAYER_RGB
@@ -14,6 +15,17 @@ SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 6000
 
 
+def _local_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return '127.0.0.1'
+
+
 class GameDisplay:
     def __init__(self) -> None:
         pygame.init()
@@ -24,7 +36,8 @@ class GameDisplay:
 
         self._fonts = Fonts()
 
-        # Connect automatically to bridge display relay (port 6000)
+        base_url = f'http://{_local_ip()}:8080'
+
         self.net = NetworkClient(SERVER_HOST, SERVER_PORT)
         self.net.start()
 
@@ -34,7 +47,8 @@ class GameDisplay:
 
         self.pong_r   = PongRenderer(self.screen, self._fonts)
         self.voting_r = VotingRenderer(self.screen, self._fonts)
-        self.lobby_r  = LobbyRenderer(self.screen, self._fonts, arena_r, player_r)
+        self.lobby_r  = LobbyRenderer(self.screen, self._fonts,
+                                      arena_r, player_r, base_url)
         self.bomb_r   = BombRenderer(self.screen, self._fonts, arena_r, player_r)
         self.panel_r  = PanelRenderer(self.screen, self._fonts,
                                       lambda: self.net.connected)
@@ -42,8 +56,6 @@ class GameDisplay:
         self._arena_r  = arena_r
         self._coin_r   = coin_r
         self._player_r = player_r
-
-    # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
         while True:

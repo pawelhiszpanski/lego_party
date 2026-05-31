@@ -329,9 +329,11 @@ function handleMsg(msg) {
   if (msg.startsWith('ROOM:')) {
     myRoomPin = msg.slice(5);
     document.getElementById('lobby-pin-code').textContent = myRoomPin;
-  } else if (msg.startsWith('WELCOME:')) {
-    myId = parseInt(msg.slice(8));
+  } else if (msg.startsWith('WELCOME:') || msg.startsWith('RECONNECT:')) {
+    const isReconnect = msg.startsWith('RECONNECT:');
+    myId = parseInt(msg.slice(isReconnect ? 10 : 8));
     showGame();
+    if (isReconnect) setStatus('Reconnected ✓', 'ok');
   } else if (msg.startsWith('STATE:')) {
     try { updateUI(JSON.parse(msg.slice(6))); } catch(_){}
   } else if (msg.startsWith('ERROR:')) {
@@ -484,6 +486,14 @@ function sendAction(dir) { send(`ACTION:${dir}`); }
 })();
 
 
+// ── Vibration / haptic feedback ──────────────────────────────────────────────
+let _prevBombHolder = -1;
+let _prevMyScore    = 0;
+
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
 function updateUI(state) {
   const phase   = state.phase   ?? 0;
   const players = state.players ?? [];
@@ -544,6 +554,26 @@ function updateUI(state) {
     const w = sorted[0];
     bot.textContent = w ? `🏆 ${w.name} wins!` : '';
   } else bot.textContent = '';
+
+  // ── haptic vibration ────────────────────────────────────────────────────
+  const bomb = state.bomb ?? {};
+  const curHolder = bomb.holder ?? -1;
+
+  // bomb just passed TO me
+  if (curHolder === myId && _prevBombHolder !== myId && _prevBombHolder >= 0) {
+    vibrate([100, 50, 100, 50, 200]);   // urgent triple pulse
+  }
+  // bomb exploded while I held it
+  if (bomb.exploded && curHolder === myId && !(_prevBombHolder < 0)) {
+    vibrate([500]);                      // long single buzz
+  }
+  _prevBombHolder = curHolder;
+
+  // coin collected by me (score went up)
+  if (me && phase === PHASE.COINS) {
+    if (me.score > _prevMyScore) vibrate([40]); // short tap
+    _prevMyScore = me.score;
+  }
 }
 
 function showPanel(phase) {
@@ -596,6 +626,16 @@ document.getElementById('room-pin-input').addEventListener('keydown', e => {
 });
 
 document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// auto-fill PIN from URL  ?pin=XXXX  (QR code links contain this)
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const urlPin = params.get('pin');
+  if (urlPin && /^\d{4}$/.test(urlPin)) {
+    document.getElementById('room-pin-input').value = urlPin;
+    setStatus('PIN pre-filled from QR code  ✓', 'ok');
+  }
+})();
 
 connectWS();
 </script>
